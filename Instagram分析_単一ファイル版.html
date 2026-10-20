@@ -1201,7 +1201,7 @@ dialog.dlg-wide { width: min(860px, calc(100vw - 32px)); overflow: auto; }
 
   <footer class="foot">
     データとアクセストークンはこのブラウザ内（localStorage）にのみ保存され、Instagram Graph API 以外へは送信されません。
-    <span class="build">版: <span id="build-stamp">2026/10/19 21:47</span></span>
+    <span class="build">版: <span id="build-stamp">2026/10/20 08:53</span></span>
   </footer>
 
   <!-- データ接続ダイアログ -->
@@ -6643,6 +6643,12 @@ __mod["js/kpi.js"] = (function () {
       followRate: ratio(follows, profileVisits),
       organicSessions: num(traffic?.breakdown?.totals?.organic),
       organicTapRate: num(traffic?.breakdown?.organicTapRate),
+      // 取り込んだデータの中身を画面で確かめられるようにする注記
+      notes: {
+        organicSessions: (traffic?.properties || []).length
+          ? `GA4 プロパティ: ${traffic.properties.join('・')}${traffic.properties.length > 1 ? ' の合計' : ''}`
+          : null,
+      },
       // 月あたりに直すときに使う「その指標の値が入っている日数」。
       // 取り込んでいない日を 0 として薄めてしまわないようにする
       coverage: {
@@ -6699,6 +6705,7 @@ __mod["js/kpi.js"] = (function () {
         gap: monthly === null ? null : def.target - monthly,
         perMonth: def.kind === 'monthly',
         days: span,
+        dataNote: values.notes?.[def.key] ?? null,
       };
     });
 
@@ -6728,6 +6735,9 @@ __mod["js/kpi.js"] = (function () {
    * リーチは広告の影響が大きいので、オーガニック分が分かるときは併記する。
    */
   function stageFunnel({ summary, posts = [], traffic = null, si = null, reach = null }) {
+    // GA4 と Instagram の両方がそろう週だけの集計（期間のズレを吸収する）
+    const landing = traffic?.landing || null;
+    const properties = traffic?.properties || [];
     const totals = summary?.totals || {};
     const nonFollowerReach = num(si?.totals?.nonFollowerReach) ?? num(totals.nonFollowerReach);
     const reachTotal = num(si?.totals?.reach) ?? num(totals.reach);
@@ -6772,29 +6782,63 @@ __mod["js/kpi.js"] = (function () {
         from: profileVisits, fromLabel: 'プロフィールアクセス',
         note: profileVisits ? `プロフィールアクセス ${Math.round(profileVisits).toLocaleString('ja-JP')}件` : '',
       },
-      // GA4 があれば「リンククリック → 実際に着地したセッション」、無ければ
-      // 「プロフィールアクセス → リンククリック」を4段階目として見る（同じ数字どうしを比べない）
-      sessions !== null
-        ? {
-            key: 'bridge', label: '4. HPへ（橋渡し）', value: sessions, unit: '',
-            metric: 'オーガニックHP流入（セッション）',
-            from: linkClicks, fromLabel: 'リンククリック',
-            note: linkClicks === null ? '' : `リンククリック ${Math.round(linkClicks).toLocaleString('ja-JP')}回`,
-          }
-        : {
-            key: 'bridge', label: '4. HPへ（橋渡し）', value: linkClicks, unit: '回',
-            metric: 'リンククリック',
-            from: profileVisits, fromLabel: 'プロフィールアクセス',
-            note: 'GA4 を取り込むと、実際に HP へ着地したセッションまで追えます',
-          },
+      bridgeStep({ landing, sessions, linkClicks, profileVisits, properties }),
     ];
 
     return steps.map((s) => ({
       ...s,
-      rate: s.value === null || !s.from ? null : (s.value / s.from) * 100,
+      rate: s.rate !== undefined ? s.rate : s.value === null || !s.from ? null : (s.value / s.from) * 100,
       // 4段階目は「リンククリックのうち何%が実際に着地したか」なので、同じ数字の比較にならないよう印を付ける
       rateIsLanding: s.key === 'bridge' && sessions !== null,
     }));
+  }
+
+  /**
+   * 4段階目（HPへ）。
+   * GA4 と Instagram は書き出しの期間が違うことが多く、そのまま割ると
+   * 「リンククリックより流入が多い」という、ありえない比率になる。
+   * そこで両方のデータがそろっている週だけで比べる（landing）。
+   */
+  function bridgeStep({ landing, sessions, linkClicks, profileVisits, properties = [] }) {
+    const n = (v) => Math.round(v).toLocaleString('ja-JP');
+    const propNote = properties.length > 1 ? `　対象プロパティ: ${properties.join('・')} の合計` : '';
+
+    // GA4 が無い：プロフィールアクセス → リンククリック を見る
+    if (sessions === null) {
+      return {
+        key: 'bridge', label: '4. HPへ（橋渡し）', value: linkClicks, unit: '回',
+        metric: 'リンククリック',
+        from: profileVisits, fromLabel: 'プロフィールアクセス',
+        note: 'GA4 を取り込むと、実際に HP へ着地したセッションまで追えます',
+      };
+    }
+
+    // GA4 はあるが、Instagram 側と重なる週が無い：比率は出せない
+    if (!landing || !landing.clicks) {
+      return {
+        key: 'bridge', label: '4. HPへ（橋渡し）', value: sessions, unit: '',
+        metric: 'オーガニックHP流入（セッション）',
+        from: null, fromLabel: 'リンククリック', rate: null,
+        note:
+          'GA4 とリンククリックで期間が重なっていないため、通過率は出せません。' +
+          `${linkClicks === null ? 'リンククリックのデータがありません。' : `リンククリック ${n(linkClicks)}回（期間が違います）。`}` +
+          '同じ期間で書き出し直すと比べられます。' + propNote,
+      };
+    }
+
+    const over = landing.rate > 100;
+    return {
+      key: 'bridge', label: '4. HPへ（橋渡し）', value: landing.sessions, unit: '',
+      metric: 'オーガニックHP流入（セッション）',
+      from: landing.clicks, fromLabel: 'リンククリック', rate: landing.rate,
+      note:
+        `GA4 とリンククリックの両方がそろう ${landing.weeks}週で比較（リンククリック ${n(landing.clicks)}回 → ${n(landing.sessions)}セッション）。` +
+        (sessions !== landing.sessions ? `期間全体のオーガニック流入は ${n(sessions)}セッションです。` : '') +
+        (over
+          ? '　※ 100%を超えるのは、1回のクリックから複数のセッションが数えられる、ストーリーズのリンクが「リンククリック」に含まれない、広告経由がオーガニックに混ざっている、などが原因です。'
+          : '') +
+        propNote,
+    };
   }
 
   /** KPI の進捗から、文章のインサイトを作る */
@@ -9163,6 +9207,8 @@ __mod["js/app.js"] = (function () {
     const name = el('td', {}, el('strong', { textContent: r.label }));
     if (r.note) name.append(el('p', { className: 'sub', textContent: r.note }));
     if (r.targetNote) name.append(el('p', { className: 'sub', textContent: `目標の考え方：${r.targetNote}` }));
+    // 何を集計した数字かが分かるようにする（GA4 が複数サイトぶんの合計になっていないか等）
+    if (r.dataNote) name.append(el('p', { className: 'sub', textContent: r.dataNote }));
 
     return el('tr', {},
       name,
