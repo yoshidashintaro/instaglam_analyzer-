@@ -1201,7 +1201,7 @@ dialog.dlg-wide { width: min(860px, calc(100vw - 32px)); overflow: auto; }
 
   <footer class="foot">
     データとアクセストークンはこのブラウザ内（localStorage）にのみ保存され、Instagram Graph API 以外へは送信されません。
-    <span class="build">版: <span id="build-stamp">2026/10/20 08:53</span></span>
+    <span class="build">版: <span id="build-stamp">2026/10/20 19:17</span></span>
   </footer>
 
   <!-- データ接続ダイアログ -->
@@ -4454,7 +4454,7 @@ __mod["js/traffic.js"] = (function () {
     const blank = (w) => ({
       week: w, posts: 0, reach: 0, views: 0, interactions: 0, saves: 0, shares: 0,
       postFollows: 0, reels: 0, carousels: 0, byAccount: {},
-      accountReach: null, accountViews: null, profileVisits: null, linkClicks: null,
+      accountReach: null, accountViews: null, accountNonFollowerReach: null, profileVisits: null, linkClicks: null,
     });
     for (const p of posts) {
       const w = weekStart(p.dateKey ?? p.timestamp.slice(0, 10));
@@ -4485,6 +4485,7 @@ __mod["js/traffic.js"] = (function () {
       };
       add('accountReach', d.reach);
       add('accountViews', d.views);
+      add('accountNonFollowerReach', d.nonFollowerReach);
       add('profileVisits', d.profileVisits);
       add('linkClicks', d.linkClicks);
       weeks.set(w, g);
@@ -4624,6 +4625,19 @@ __mod["js/traffic.js"] = (function () {
         sessions: account ? r.ga.byAccount[account] || 0 : r.ga.organic,
       })),
     };
+  }
+
+  /**
+   * 認知（フォロワー以外へのリーチ）に対する HP 流入の通過率。
+   * GA4 と Instagram は書き出しの期間が違うことが多いため、両方そろっている週だけで出す。
+   */
+  function reachToSiteRate(joined, { account = '' } = {}) {
+    const rows = joined.filter((r) => (r.ig.accountNonFollowerReach ?? 0) > 0 && r.ga.byAccount);
+    if (!rows.length) return null;
+    const reach = rows.reduce((s, r) => s + r.ig.accountNonFollowerReach, 0);
+    const sessions = rows.reduce((s, r) => s + (account ? r.ga.byAccount[account] || 0 : r.ga.organic), 0);
+    const clicks = rows.reduce((s, r) => s + (r.ig.linkClicks ?? 0), 0);
+    return { weeks: rows.length, reach, sessions, clicks, rate: reach ? (sessions / reach) * 100 : null };
   }
 
   /**
@@ -4804,7 +4818,7 @@ __mod["js/traffic.js"] = (function () {
     return `${per} 約 ${v >= 0 ? '+' : '−'}${body}${unit}${c.significant ? '' : '（参考）'}`;
   }
 
-  return { mean, weekStart, weeklyTraffic, weeklyInstagram, joinWeeks, DRIVERS, TARGETS, weeklySearch, mergeTargetWeeks, availableTargets, correlationTable, laggedCorrelation, landingRate, hpSummary, trafficBreakdown, scatterData, trafficInsights, describeCorrelation, describeEstimate };
+  return { mean, weekStart, weeklyTraffic, weeklyInstagram, joinWeeks, DRIVERS, TARGETS, weeklySearch, mergeTargetWeeks, availableTargets, correlationTable, laggedCorrelation, landingRate, reachToSiteRate, hpSummary, trafficBreakdown, scatterData, trafficInsights, describeCorrelation, describeEstimate };
 })();
 
 __mod["js/data/graphApi.js"] = (function () {
@@ -5234,7 +5248,7 @@ __mod["js/report.js"] = (function () {
       );
 
       if (tree.funnel?.length) {
-        h(3, '見る → 残す → つながる → HPへ');
+        h(3, '見る → 残す → 深める → つながる → HPへ');
         p('投稿を見た人がたどる4段階です。各段階の代表の数字と、1つ前の段階からの通過率を出しています。');
         table(
           ['段階', '指標', '実績', '1つ前からの通過率', '補足'],
@@ -6536,8 +6550,9 @@ __mod["js/kpi.js"] = (function () {
     { key: 'kgi', label: 'KGI', note: '最終目標。興味を持った人がどれだけ増えたか' },
     { key: 'see', label: '1. 見る（認知）', note: 'リールを最後まで見る・カルーセルを最後までめくる' },
     { key: 'keep', label: '2. 残す（興味）', note: '保存・シェア。興味関心層になった証拠で、ここが最重要' },
-    { key: 'connect', label: '3. つながる（関係化）', note: 'プロフィール訪問 → フォロー' },
-    { key: 'bridge', label: '4. HPへ（検討への橋渡し）', note: 'プロフィールのリンクから HP・LINE へ。ここから先は LINE・広告・HP が担う' },
+    { key: 'deepen', label: '3. 深める（関心）', note: 'もっと知りたくなってプロフィールを見に行く' },
+    { key: 'connect', label: '4. つながる（関係化）', note: 'プロフィール訪問 → フォロー' },
+    { key: 'bridge', label: '5. HPへ（検討への橋渡し）', note: 'プロフィールのリンクから HP・LINE へ。ここから先は LINE・広告・HP が担う' },
   ];
 
   /**
@@ -6737,6 +6752,7 @@ __mod["js/kpi.js"] = (function () {
   function stageFunnel({ summary, posts = [], traffic = null, si = null, reach = null }) {
     // GA4 と Instagram の両方がそろう週だけの集計（期間のズレを吸収する）
     const landing = traffic?.landing || null;
+    const bridge = traffic?.bridge || null;
     const properties = traffic?.properties || [];
     const totals = summary?.totals || {};
     const nonFollowerReach = num(si?.totals?.nonFollowerReach) ?? num(totals.nonFollowerReach);
@@ -6776,13 +6792,20 @@ __mod["js/kpi.js"] = (function () {
         from: reachTotal, fromLabel: 'リーチ全体',
         note: saves !== null || shares !== null ? `保存 ${(saves ?? 0).toLocaleString('ja-JP')}件・シェア ${(shares ?? 0).toLocaleString('ja-JP')}件` : '',
       },
+      // 認知（フォロワー以外へのリーチ）のうち、どれだけがプロフィールまで見に来たか
       {
-        key: 'connect', label: '3. つながる（関係化）', value: follows, unit: '人',
+        key: 'deepen', label: '3. 深める（関心）', value: profileVisits, unit: '件',
+        metric: 'プロフィールアクセス数',
+        from: nonFollowerReach, fromLabel: 'フォロワー以外へのリーチ（広告込み）',
+        note: '投稿を見た人が「もっと知りたい」と思ってプロフィールを見に来た割合です',
+      },
+      {
+        key: 'connect', label: '4. つながる（関係化）', value: follows, unit: '人',
         metric: '新規フォロー',
         from: profileVisits, fromLabel: 'プロフィールアクセス',
         note: profileVisits ? `プロフィールアクセス ${Math.round(profileVisits).toLocaleString('ja-JP')}件` : '',
       },
-      bridgeStep({ landing, sessions, linkClicks, profileVisits, properties }),
+      bridgeStep({ landing, bridge, sessions, linkClicks, profileVisits, nonFollowerReach, properties }),
     ];
 
     return steps.map((s) => ({
@@ -6799,44 +6822,43 @@ __mod["js/kpi.js"] = (function () {
    * 「リンククリックより流入が多い」という、ありえない比率になる。
    * そこで両方のデータがそろっている週だけで比べる（landing）。
    */
-  function bridgeStep({ landing, sessions, linkClicks, profileVisits, properties = [] }) {
+  function bridgeStep({ landing, bridge, sessions, linkClicks, profileVisits, nonFollowerReach, properties = [] }) {
     const n = (v) => Math.round(v).toLocaleString('ja-JP');
     const propNote = properties.length > 1 ? `　対象プロパティ: ${properties.join('・')} の合計` : '';
+    const label = '5. HPへ（橋渡し）';
 
     // GA4 が無い：プロフィールアクセス → リンククリック を見る
     if (sessions === null) {
       return {
-        key: 'bridge', label: '4. HPへ（橋渡し）', value: linkClicks, unit: '回',
+        key: 'bridge', label, value: linkClicks, unit: '回',
         metric: 'リンククリック',
         from: profileVisits, fromLabel: 'プロフィールアクセス',
         note: 'GA4 を取り込むと、実際に HP へ着地したセッションまで追えます',
       };
     }
 
-    // GA4 はあるが、Instagram 側と重なる週が無い：比率は出せない
-    if (!landing || !landing.clicks) {
+    // GA4 はあるが、フォロワー以外へのリーチと重なる週が無い：比率は出せない
+    if (!bridge || !bridge.reach) {
       return {
-        key: 'bridge', label: '4. HPへ（橋渡し）', value: sessions, unit: '',
+        key: 'bridge', label, value: sessions, unit: '',
         metric: 'オーガニックHP流入（セッション）',
-        from: null, fromLabel: 'リンククリック', rate: null,
+        from: null, fromLabel: 'フォロワー以外へのリーチ（広告込み）', rate: null,
         note:
-          'GA4 とリンククリックで期間が重なっていないため、通過率は出せません。' +
-          `${linkClicks === null ? 'リンククリックのデータがありません。' : `リンククリック ${n(linkClicks)}回（期間が違います）。`}` +
+          'GA4 とリーチのデータで期間が重なっていないため、通過率は出せません。' +
+          `${nonFollowerReach === null ? 'フォロワー以外へのリーチのデータがありません。' : `フォロワー以外へのリーチ ${n(nonFollowerReach)}（期間が違います）。`}` +
           '同じ期間で書き出し直すと比べられます。' + propNote,
       };
     }
 
-    const over = landing.rate > 100;
+    // 認知（フォロワー以外へのリーチ）に対する割合。両方そろう週だけで比べる
     return {
-      key: 'bridge', label: '4. HPへ（橋渡し）', value: landing.sessions, unit: '',
+      key: 'bridge', label, value: bridge.sessions, unit: '',
       metric: 'オーガニックHP流入（セッション）',
-      from: landing.clicks, fromLabel: 'リンククリック', rate: landing.rate,
+      from: bridge.reach, fromLabel: 'フォロワー以外へのリーチ（広告込み）', rate: bridge.rate,
       note:
-        `GA4 とリンククリックの両方がそろう ${landing.weeks}週で比較（リンククリック ${n(landing.clicks)}回 → ${n(landing.sessions)}セッション）。` +
-        (sessions !== landing.sessions ? `期間全体のオーガニック流入は ${n(sessions)}セッションです。` : '') +
-        (over
-          ? '　※ 100%を超えるのは、1回のクリックから複数のセッションが数えられる、ストーリーズのリンクが「リンククリック」に含まれない、広告経由がオーガニックに混ざっている、などが原因です。'
-          : '') +
+        `GA4 とリーチの両方がそろう ${bridge.weeks}週で比較（フォロワー以外へのリーチ ${n(bridge.reach)} → ${n(bridge.sessions)}セッション）。` +
+        (bridge.clicks ? `同じ期間のリンククリックは ${n(bridge.clicks)}回（到達率 ${((bridge.sessions / bridge.clicks) * 100).toFixed(1)}%）。` : '') +
+        (sessions !== bridge.sessions ? `期間全体のオーガニック流入は ${n(sessions)}セッションです。` : '') +
         propNote,
     };
   }
@@ -8400,7 +8422,7 @@ __mod["js/app.js"] = (function () {
   const { importCSV, toCSV, decodeCSV, describeImport, parseCSV, looksGarbled, mergeContentFormats } = __mod["js/data/csv.js"];
   const { readWorkbook, isXlsxName } = __mod["js/data/xlsx.js"];
   const { importGA4Workbook, readGA4Table, mergeGA4, propertyFromFileName, primaryRows, campaignRows, isInstagram } = __mod["js/data/ga4.js"];
-  const { weeklyTraffic, weeklyInstagram, joinWeeks, correlationTable, laggedCorrelation, landingRate, trafficBreakdown, scatterData, trafficInsights, weekStart, hpSummary, describeEstimate, DRIVERS, TARGETS, weeklySearch, mergeTargetWeeks, availableTargets } = __mod["js/traffic.js"];
+  const { weeklyTraffic, weeklyInstagram, joinWeeks, correlationTable, laggedCorrelation, landingRate, trafficBreakdown, scatterData, trafficInsights, weekStart, hpSummary, describeEstimate, DRIVERS, TARGETS, weeklySearch, mergeTargetWeeks, availableTargets, reachToSiteRate } = __mod["js/traffic.js"];
   const { GraphClient, fetchFromGraph } = __mod["js/data/graphApi.js"];
   const { buildReport, toMarkdown, readCorrelation } = __mod["js/report.js"];
   const { toDocx, DOCX_MIME } = __mod["js/docx.js"];
@@ -8698,6 +8720,8 @@ __mod["js/app.js"] = (function () {
     const lagged = joined.length >= 4 ? laggedCorrelation(joined, { target }) : [];
     // リンククリックは本アカウントの数字なので、比べる相手もそのアカウント由来に絞る
     const landing = landingRate(joined, { account: account || fallbackAccount });
+    // ファネル5段階目：認知（フォロワー以外へのリーチ）に対する HP 流入の通過率
+    const bridge = reachToSiteRate(joined, { account: account || fallbackAccount });
     const insights = trafficInsights({ table, lagged, breakdown, landing, joined });
 
     // UTM キャンペーン別（どの投稿・施策からの流入か）
@@ -8713,7 +8737,7 @@ __mod["js/app.js"] = (function () {
 
     const driverKey = DRIVERS.some((d) => d.key === state.settings.scatterDriver) ? state.settings.scatterDriver : 'posts';
     return {
-      gaWeeks, gaOnlyWeeks, scWeeks, hasGA4, targets, igWeeks, joined, breakdown, table, lagged, landing, insights,
+      gaWeeks, gaOnlyWeeks, scWeeks, hasGA4, targets, igWeeks, joined, breakdown, table, lagged, landing, bridge, insights,
       target, driverKey, fallbackAccount,
       scatter: joined.length >= 3 ? scatterData(joined, driverKey, target) : null,
       properties: [...new Set(rows.map((r) => r.property).filter(Boolean))],

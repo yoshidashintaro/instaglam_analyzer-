@@ -14,7 +14,7 @@ import { importGA4Workbook, readGA4Table, mergeGA4, propertyFromFileName, primar
 import {
   weeklyTraffic, weeklyInstagram, joinWeeks, correlationTable, laggedCorrelation,
   landingRate, trafficBreakdown, scatterData, trafficInsights, weekStart, hpSummary, describeEstimate, DRIVERS, TARGETS,
-  weeklySearch, mergeTargetWeeks, availableTargets,
+  weeklySearch, mergeTargetWeeks, availableTargets, reachToSiteRate,
 } from './traffic.js';
 import { GraphClient, fetchFromGraph } from './data/graphApi.js';
 import { buildReport, toMarkdown, readCorrelation } from './report.js';
@@ -305,6 +305,8 @@ function computeTraffic(ds, { startKey, endKey, daily, posts, accounts, account,
   const lagged = joined.length >= 4 ? laggedCorrelation(joined, { target }) : [];
   // リンククリックは本アカウントの数字なので、比べる相手もそのアカウント由来に絞る
   const landing = landingRate(joined, { account: account || fallbackAccount });
+  // ファネル5段階目：認知（フォロワー以外へのリーチ）に対する HP 流入の通過率
+  const bridge = reachToSiteRate(joined, { account: account || fallbackAccount });
   const insights = trafficInsights({ table, lagged, breakdown, landing, joined });
 
   // UTM キャンペーン別（どの投稿・施策からの流入か）
@@ -320,7 +322,7 @@ function computeTraffic(ds, { startKey, endKey, daily, posts, accounts, account,
 
   const driverKey = DRIVERS.some((d) => d.key === state.settings.scatterDriver) ? state.settings.scatterDriver : 'posts';
   return {
-    gaWeeks, gaOnlyWeeks, scWeeks, hasGA4, targets, igWeeks, joined, breakdown, table, lagged, landing, insights,
+    gaWeeks, gaOnlyWeeks, scWeeks, hasGA4, targets, igWeeks, joined, breakdown, table, lagged, landing, bridge, insights,
     target, driverKey, fallbackAccount,
     scatter: joined.length >= 3 ? scatterData(joined, driverKey, target) : null,
     properties: [...new Set(rows.map((r) => r.property).filter(Boolean))],
@@ -814,6 +816,8 @@ function kpiRowEl(r, editing) {
   const name = el('td', {}, el('strong', { textContent: r.label }));
   if (r.note) name.append(el('p', { className: 'sub', textContent: r.note }));
   if (r.targetNote) name.append(el('p', { className: 'sub', textContent: `目標の考え方：${r.targetNote}` }));
+  // 何を集計した数字かが分かるようにする（GA4 が複数サイトぶんの合計になっていないか等）
+  if (r.dataNote) name.append(el('p', { className: 'sub', textContent: r.dataNote }));
 
   return el('tr', {},
     name,

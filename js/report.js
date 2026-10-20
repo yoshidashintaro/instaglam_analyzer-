@@ -147,7 +147,7 @@ export function buildReport(v, { dataset = {}, settings = {}, warnings = [], gen
     );
 
     if (tree.funnel?.length) {
-      h(3, '見る → 残す → つながる → HPへ');
+      h(3, '見る → 残す → 深める → つながる → HPへ');
       p('投稿を見た人がたどる4段階です。各段階の代表の数字と、1つ前の段階からの通過率を出しています。');
       table(
         ['段階', '指標', '実績', '1つ前からの通過率', '補足'],

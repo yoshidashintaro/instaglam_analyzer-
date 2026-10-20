@@ -57,7 +57,7 @@ export function weeklyInstagram(posts, daily) {
   const blank = (w) => ({
     week: w, posts: 0, reach: 0, views: 0, interactions: 0, saves: 0, shares: 0,
     postFollows: 0, reels: 0, carousels: 0, byAccount: {},
-    accountReach: null, accountViews: null, profileVisits: null, linkClicks: null,
+    accountReach: null, accountViews: null, accountNonFollowerReach: null, profileVisits: null, linkClicks: null,
   });
   for (const p of posts) {
     const w = weekStart(p.dateKey ?? p.timestamp.slice(0, 10));
@@ -88,6 +88,7 @@ export function weeklyInstagram(posts, daily) {
     };
     add('accountReach', d.reach);
     add('accountViews', d.views);
+    add('accountNonFollowerReach', d.nonFollowerReach);
     add('profileVisits', d.profileVisits);
     add('linkClicks', d.linkClicks);
     weeks.set(w, g);
@@ -227,6 +228,19 @@ export function landingRate(joined, { account = '' } = {}) {
       sessions: account ? r.ga.byAccount[account] || 0 : r.ga.organic,
     })),
   };
+}
+
+/**
+ * 認知（フォロワー以外へのリーチ）に対する HP 流入の通過率。
+ * GA4 と Instagram は書き出しの期間が違うことが多いため、両方そろっている週だけで出す。
+ */
+export function reachToSiteRate(joined, { account = '' } = {}) {
+  const rows = joined.filter((r) => (r.ig.accountNonFollowerReach ?? 0) > 0 && r.ga.byAccount);
+  if (!rows.length) return null;
+  const reach = rows.reduce((s, r) => s + r.ig.accountNonFollowerReach, 0);
+  const sessions = rows.reduce((s, r) => s + (account ? r.ga.byAccount[account] || 0 : r.ga.organic), 0);
+  const clicks = rows.reduce((s, r) => s + (r.ig.linkClicks ?? 0), 0);
+  return { weeks: rows.length, reach, sessions, clicks, rate: reach ? (sessions / reach) * 100 : null };
 }
 
 /**

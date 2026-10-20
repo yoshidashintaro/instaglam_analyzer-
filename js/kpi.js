@@ -13,8 +13,9 @@ export const KPI_STAGES = [
   { key: 'kgi', label: 'KGI', note: '最終目標。興味を持った人がどれだけ増えたか' },
   { key: 'see', label: '1. 見る（認知）', note: 'リールを最後まで見る・カルーセルを最後までめくる' },
   { key: 'keep', label: '2. 残す（興味）', note: '保存・シェア。興味関心層になった証拠で、ここが最重要' },
-  { key: 'connect', label: '3. つながる（関係化）', note: 'プロフィール訪問 → フォロー' },
-  { key: 'bridge', label: '4. HPへ（検討への橋渡し）', note: 'プロフィールのリンクから HP・LINE へ。ここから先は LINE・広告・HP が担う' },
+  { key: 'deepen', label: '3. 深める（関心）', note: 'もっと知りたくなってプロフィールを見に行く' },
+  { key: 'connect', label: '4. つながる（関係化）', note: 'プロフィール訪問 → フォロー' },
+  { key: 'bridge', label: '5. HPへ（検討への橋渡し）', note: 'プロフィールのリンクから HP・LINE へ。ここから先は LINE・広告・HP が担う' },
 ];
 
 /**
@@ -120,6 +121,12 @@ export function kpiValues({ summary, posts = [], daily = [], traffic = null, si 
     followRate: ratio(follows, profileVisits),
     organicSessions: num(traffic?.breakdown?.totals?.organic),
     organicTapRate: num(traffic?.breakdown?.organicTapRate),
+    // 取り込んだデータの中身を画面で確かめられるようにする注記
+    notes: {
+      organicSessions: (traffic?.properties || []).length
+        ? `GA4 プロパティ: ${traffic.properties.join('・')}${traffic.properties.length > 1 ? ' の合計' : ''}`
+        : null,
+    },
     // 月あたりに直すときに使う「その指標の値が入っている日数」。
     // 取り込んでいない日を 0 として薄めてしまわないようにする
     coverage: {
@@ -176,6 +183,7 @@ export function kpiRows(values, days, goals = {}) {
       gap: monthly === null ? null : def.target - monthly,
       perMonth: def.kind === 'monthly',
       days: span,
+      dataNote: values.notes?.[def.key] ?? null,
     };
   });
 
@@ -205,6 +213,10 @@ export function kpiByStage(rows) {
  * リーチは広告の影響が大きいので、オーガニック分が分かるときは併記する。
  */
 export function stageFunnel({ summary, posts = [], traffic = null, si = null, reach = null }) {
+  // GA4 と Instagram の両方がそろう週だけの集計（期間のズレを吸収する）
+  const landing = traffic?.landing || null;
+  const bridge = traffic?.bridge || null;
+  const properties = traffic?.properties || [];
   const totals = summary?.totals || {};
   const nonFollowerReach = num(si?.totals?.nonFollowerReach) ?? num(totals.nonFollowerReach);
   const reachTotal = num(si?.totals?.reach) ?? num(totals.reach);
@@ -243,35 +255,75 @@ export function stageFunnel({ summary, posts = [], traffic = null, si = null, re
       from: reachTotal, fromLabel: 'リーチ全体',
       note: saves !== null || shares !== null ? `保存 ${(saves ?? 0).toLocaleString('ja-JP')}件・シェア ${(shares ?? 0).toLocaleString('ja-JP')}件` : '',
     },
+    // 認知（フォロワー以外へのリーチ）のうち、どれだけがプロフィールまで見に来たか
     {
-      key: 'connect', label: '3. つながる（関係化）', value: follows, unit: '人',
+      key: 'deepen', label: '3. 深める（関心）', value: profileVisits, unit: '件',
+      metric: 'プロフィールアクセス数',
+      from: nonFollowerReach, fromLabel: 'フォロワー以外へのリーチ（広告込み）',
+      note: '投稿を見た人が「もっと知りたい」と思ってプロフィールを見に来た割合です',
+    },
+    {
+      key: 'connect', label: '4. つながる（関係化）', value: follows, unit: '人',
       metric: '新規フォロー',
       from: profileVisits, fromLabel: 'プロフィールアクセス',
       note: profileVisits ? `プロフィールアクセス ${Math.round(profileVisits).toLocaleString('ja-JP')}件` : '',
     },
-    // GA4 があれば「リンククリック → 実際に着地したセッション」、無ければ
-    // 「プロフィールアクセス → リンククリック」を4段階目として見る（同じ数字どうしを比べない）
-    sessions !== null
-      ? {
-          key: 'bridge', label: '4. HPへ（橋渡し）', value: sessions, unit: '',
-          metric: 'オーガニックHP流入（セッション）',
-          from: linkClicks, fromLabel: 'リンククリック',
-          note: linkClicks === null ? '' : `リンククリック ${Math.round(linkClicks).toLocaleString('ja-JP')}回`,
-        }
-      : {
-          key: 'bridge', label: '4. HPへ（橋渡し）', value: linkClicks, unit: '回',
-          metric: 'リンククリック',
-          from: profileVisits, fromLabel: 'プロフィールアクセス',
-          note: 'GA4 を取り込むと、実際に HP へ着地したセッションまで追えます',
-        },
+    bridgeStep({ landing, bridge, sessions, linkClicks, profileVisits, nonFollowerReach, properties }),
   ];
 
   return steps.map((s) => ({
     ...s,
-    rate: s.value === null || !s.from ? null : (s.value / s.from) * 100,
+    rate: s.rate !== undefined ? s.rate : s.value === null || !s.from ? null : (s.value / s.from) * 100,
     // 4段階目は「リンククリックのうち何%が実際に着地したか」なので、同じ数字の比較にならないよう印を付ける
     rateIsLanding: s.key === 'bridge' && sessions !== null,
   }));
+}
+
+/**
+ * 4段階目（HPへ）。
+ * GA4 と Instagram は書き出しの期間が違うことが多く、そのまま割ると
+ * 「リンククリックより流入が多い」という、ありえない比率になる。
+ * そこで両方のデータがそろっている週だけで比べる（landing）。
+ */
+function bridgeStep({ landing, bridge, sessions, linkClicks, profileVisits, nonFollowerReach, properties = [] }) {
+  const n = (v) => Math.round(v).toLocaleString('ja-JP');
+  const propNote = properties.length > 1 ? `　対象プロパティ: ${properties.join('・')} の合計` : '';
+  const label = '5. HPへ（橋渡し）';
+
+  // GA4 が無い：プロフィールアクセス → リンククリック を見る
+  if (sessions === null) {
+    return {
+      key: 'bridge', label, value: linkClicks, unit: '回',
+      metric: 'リンククリック',
+      from: profileVisits, fromLabel: 'プロフィールアクセス',
+      note: 'GA4 を取り込むと、実際に HP へ着地したセッションまで追えます',
+    };
+  }
+
+  // GA4 はあるが、フォロワー以外へのリーチと重なる週が無い：比率は出せない
+  if (!bridge || !bridge.reach) {
+    return {
+      key: 'bridge', label, value: sessions, unit: '',
+      metric: 'オーガニックHP流入（セッション）',
+      from: null, fromLabel: 'フォロワー以外へのリーチ（広告込み）', rate: null,
+      note:
+        'GA4 とリーチのデータで期間が重なっていないため、通過率は出せません。' +
+        `${nonFollowerReach === null ? 'フォロワー以外へのリーチのデータがありません。' : `フォロワー以外へのリーチ ${n(nonFollowerReach)}（期間が違います）。`}` +
+        '同じ期間で書き出し直すと比べられます。' + propNote,
+    };
+  }
+
+  // 認知（フォロワー以外へのリーチ）に対する割合。両方そろう週だけで比べる
+  return {
+    key: 'bridge', label, value: bridge.sessions, unit: '',
+    metric: 'オーガニックHP流入（セッション）',
+    from: bridge.reach, fromLabel: 'フォロワー以外へのリーチ（広告込み）', rate: bridge.rate,
+    note:
+      `GA4 とリーチの両方がそろう ${bridge.weeks}週で比較（フォロワー以外へのリーチ ${n(bridge.reach)} → ${n(bridge.sessions)}セッション）。` +
+      (bridge.clicks ? `同じ期間のリンククリックは ${n(bridge.clicks)}回（到達率 ${((bridge.sessions / bridge.clicks) * 100).toFixed(1)}%）。` : '') +
+      (sessions !== bridge.sessions ? `期間全体のオーガニック流入は ${n(sessions)}セッションです。` : '') +
+      propNote,
+  };
 }
 
 /** KPI の進捗から、文章のインサイトを作る */
