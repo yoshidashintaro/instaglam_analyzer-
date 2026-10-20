@@ -1,0 +1,64 @@
+# Apache（エックスサーバー・さくらのレンタルサーバ・ロリポップ等）用の設定
+# アップロード先フォルダにそのまま置いてください。
+
+# ===== ベーシック認証 =====
+# ※ AuthUserFile には .htpasswd の「サーバー上の絶対パス」を書きます。
+#    契約サーバーによって違うので、下の1行を必ず書き換えてください。
+#      エックスサーバー : /home/アカウント名/ドメイン名/public_html/.htpasswd
+#      さくら           : /home/アカウント名/www/.htpasswd
+#      ロリポップ       : /home/users/0/アカウント名/web/.htpasswd
+#    分からない場合は、サーバー管理画面の「アクセス制限」機能を使うほうが確実です
+#    （その場合、この認証ブロックは消してください。二重にかかります）。
+AuthType Basic
+AuthName "Insight Dashboard"
+AuthUserFile /絶対パスに書き換えてください/.htpasswd
+Require valid-user
+
+# パスワードファイル自体は配信しない
+<Files ".htpasswd">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+  </IfModule>
+</Files>
+
+# 一覧表示を禁止
+Options -Indexes
+
+DirectoryIndex index.html
+
+# 文字コードと MIME タイプ（JS モジュールは正しい MIME でないと読み込めない）
+AddDefaultCharset UTF-8
+<IfModule mod_mime.c>
+  AddType text/javascript .js .mjs
+  AddType text/css .css
+  AddType text/csv .csv
+  AddCharset UTF-8 .html .js .css .csv
+</IfModule>
+
+<IfModule mod_headers.c>
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set Referrer-Policy "no-referrer"
+  Header always set X-Frame-Options "SAMEORIGIN"
+  # 検索エンジンに載せない（HTML の meta robots と同じ指定。CSV などにも効く）
+  Header always set X-Robots-Tag "noindex, nofollow, noarchive"
+  # 更新をすぐ反映させるため、HTML/JS/CSS は毎回サーバーに確認させる
+  <FilesMatch "\.(html|js|css)$">
+    Header set Cache-Control "no-cache"
+  </FilesMatch>
+</IfModule>
+
+# 圧縮転送
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/html text/css text/javascript application/javascript text/csv
+</IfModule>
+
+# HTTPS へ転送（SSL 設定済みのサーバーでのみ有効にしてください）
+# <IfModule mod_rewrite.c>
+#   RewriteEngine On
+#   RewriteCond %{HTTPS} off
+#   RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
+# </IfModule>

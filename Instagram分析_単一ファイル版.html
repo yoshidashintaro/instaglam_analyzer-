@@ -673,7 +673,7 @@ dialog.dlg-wide { width: min(860px, calc(100vw - 32px)); overflow: auto; }
 
         <div class="grid-2-1">
           <article class="card" id="kpi-funnel-card">
-            <header><div><h3>見る → 残す → つながる → HPへ</h3><p class="sub">投稿を見た人がたどる4段階。各段階の代表の数字と、1つ前からの通過率</p></div></header>
+            <header><div><h3>見る → 残す → 深める → つながる → HPへ</h3><p class="sub">投稿を見た人がたどる5段階。各段階の代表の数字と、何に対する割合かを表示します</p></div></header>
             <ol class="stage-funnel" id="kpi-funnel"></ol>
           </article>
           <article class="card" id="kpi-kgi-card">
@@ -1201,7 +1201,7 @@ dialog.dlg-wide { width: min(860px, calc(100vw - 32px)); overflow: auto; }
 
   <footer class="foot">
     データとアクセストークンはこのブラウザ内（localStorage）にのみ保存され、Instagram Graph API 以外へは送信されません。
-    <span class="build">版: <span id="build-stamp">2026/10/20 19:17</span></span>
+    <span class="build">版: <span id="build-stamp">2026/10/20 19:49</span></span>
   </footer>
 
   <!-- データ接続ダイアログ -->
@@ -6535,7 +6535,7 @@ __mod["js/data/reachMix.js"] = (function () {
 
 __mod["js/kpi.js"] = (function () {
   const { DAY_MS, parseDateKey } = __mod["js/analytics.js"];
-  // KPI ツリーと、投稿を見た人がたどる4段階（見る → 残す → つながる → HPへ）。
+  // KPI ツリーと、投稿を見た人がたどる5段階（見る → 残す → 深める → つながる → HPへ）。
   //
   // 運用で決めた指標の定義・ベースライン・目標をここに1か所でまとめ、
   // 期間の合計から「月あたり」に直して進捗を出す。
@@ -6745,7 +6745,7 @@ __mod["js/kpi.js"] = (function () {
   }
 
   /**
-   * 「見る → 残す → つながる → HPへ」の4段階。
+   * 「見る → 残す → 深める → つながる → HPへ」の5段階。
    * 段階ごとに代表の数字と、1つ前の段階からの通過率を出す。
    * リーチは広告の影響が大きいので、オーガニック分が分かるときは併記する。
    */
@@ -6811,13 +6811,13 @@ __mod["js/kpi.js"] = (function () {
     return steps.map((s) => ({
       ...s,
       rate: s.rate !== undefined ? s.rate : s.value === null || !s.from ? null : (s.value / s.from) * 100,
-      // 4段階目は「リンククリックのうち何%が実際に着地したか」なので、同じ数字の比較にならないよう印を付ける
+      // 5段階目は GA4 由来なので、期間をそろえて比べていることが分かるよう印を付ける
       rateIsLanding: s.key === 'bridge' && sessions !== null,
     }));
   }
 
   /**
-   * 4段階目（HPへ）。
+   * 5段階目（HPへ）。
    * GA4 と Instagram は書き出しの期間が違うことが多く、そのまま割ると
    * 「リンククリックより流入が多い」という、ありえない比率になる。
    * そこで両方のデータがそろっている週だけで比べる（landing）。
@@ -9140,7 +9140,7 @@ __mod["js/app.js"] = (function () {
       );
     }
 
-    // --- 4段階のファネル ---
+    // --- 5段階のファネル ---
     $('#kpi-funnel').replaceChildren(
       ...v.kpi.funnel.map((s) =>
         el('li', {},
