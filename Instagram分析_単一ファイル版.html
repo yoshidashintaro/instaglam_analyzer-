@@ -1241,7 +1241,7 @@ dialog.dlg-wide { width: min(860px, calc(100vw - 32px)); overflow: auto; }
 
   <footer class="foot">
     データとアクセストークンはこのブラウザ内（localStorage）にのみ保存され、Instagram Graph API 以外へは送信されません。
-    <span class="build">版: <span id="build-stamp">2026/10/21 13:58</span></span>
+    <span class="build">版: <span id="build-stamp">2026/10/21 15:04</span></span>
   </footer>
 
   <!-- データ接続ダイアログ -->
@@ -4113,6 +4113,36 @@ __mod["js/data/ga4.js"] = (function () {
     return /\/\s*(paid|cpc|ppc|cpm)\b/.test(s) || /\bpaid\b/.test(s.split('/')[1] || '');
   }
 
+  /** 検索エンジン（自然検索・検索広告の判定に使う） */
+  const SEARCH_ENGINES = ['google', 'yahoo', 'bing', 'microsoft', 'duckduckgo', 'baidu', 'naver', 'ecosia'];
+
+  const splitSourceMedium = (sourceMedium) => {
+    const [source = '', medium = ''] = String(sourceMedium ?? '').toLowerCase().split('/');
+    // 「paid-search」「paid_search」などの表記ゆれをまとめる
+    return { source: source.trim(), medium: medium.trim().replace(/[\s_-]/g, '') };
+  };
+
+  /**
+   * 自然検索からの流入か（Instagram は除く）。
+   * メディアが organic のものを自然検索とみなす。
+   */
+  function isOrganicSearch(sourceMedium) {
+    if (isInstagram(sourceMedium)) return false;
+    return /organic/.test(splitSourceMedium(sourceMedium).medium);
+  }
+
+  /**
+   * 検索広告（リスティング広告）からの流入か。
+   * メディアが cpc / ppc / paidsearch などで、かつ参照元が検索エンジンのもの。
+   * SNS の広告（ig / paid など）は含めない。
+   */
+  function isSearchAd(sourceMedium) {
+    if (isInstagram(sourceMedium)) return false;
+    const { source, medium } = splitSourceMedium(sourceMedium);
+    if (!/^(cpc|ppc|paid|paidsearch|sem|cpm)$/.test(medium)) return false;
+    return SEARCH_ENGINES.some((e) => source.includes(e));
+  }
+
   /**
    * 参照元/メディアから Instagram アカウントを推定する既定ルール。
    * 利用者が画面で対応づけを上書きできるよう、ルールは配列で返す。
@@ -4190,15 +4220,81 @@ __mod["js/data/ga4.js"] = (function () {
    */
   function importGA4Workbook(sheets, { property = '' } = {}) {
     const rows = [];
+    const channels = [];
     const found = [];
     for (const sheet of sheets) {
+      // チャネル別（Organic Search / Paid Search など）の表を先に見る。
+      // 参照元/メディアの表は Instagram 以外をまとめていることがあり、自然検索・検索広告を分けられないため。
+      const ch = readChannelTable(sheet.rows);
+      if (ch) {
+        for (const r of ch.rows) channels.push({ ...r, property, sheet: sheet.name });
+        found.push(`${sheet.name}（${ch.rows.length}行・チャネル別）`);
+        continue;
+      }
       const table = readGA4Table(sheet.rows);
       if (!table) continue;
       for (const r of table.rows) rows.push({ ...r, property, sheet: sheet.name });
       found.push(`${sheet.name}（${table.rows.length}行・${table.level === 'campaign' ? 'キャンペーン別' : '参照元別'}）`);
     }
-    if (!rows.length) return null;
-    return { rows, sheets: found };
+    if (!rows.length && !channels.length) return null;
+    return { rows, channels, sheets: found };
+  }
+
+  /** GA4 の既定チャネルグループ → アプリ内のキー */
+  const CHANNEL_KEYS = {
+    organicsearch: 'searchOrganic',
+    paidsearch: 'searchAds',
+    自然検索: 'searchOrganic',
+    有料検索: 'searchAds',
+    検索広告: 'searchAds',
+  };
+
+  /** チャネル名をキーにする（表記ゆれを吸収） */
+  const channelKey = (name) => CHANNEL_KEYS[String(name ?? '').toLowerCase().replace(/[\s_-]/g, '')] || null;
+
+  const CHANNEL_HEADS = ['チャネル', 'チャネルグループ', 'channel', 'defaultchannelgroup', 'sessiondefaultchannelgroup'];
+  const CHANNEL_DATE_HEADS = ['週開始', '日付', 'date', 'week', 'weekstart'];
+
+  /**
+   * 「週開始・チャネル・セッション」のチャネル別の表を読む。
+   * GA4 の「セッションのデフォルト チャネル グループ」で書き出したもの。
+   * @returns {null|{rows:{date:string, channel:string, key:?string, sessions:number, ...}[]}}
+   */
+  function readChannelTable(rows) {
+    if (!rows?.length) return null;
+    for (let h = 0; h < Math.min(rows.length, 8); h++) {
+      const head = (rows[h] || []).map((x) => String(x ?? '').toLowerCase().replace(/[\s\n_-]/g, ''));
+      const iDate = head.findIndex((x) => CHANNEL_DATE_HEADS.some((a) => x === a.toLowerCase()));
+      const iCh = head.findIndex((x) => CHANNEL_HEADS.some((a) => x === a.toLowerCase()));
+      const iSessions = head.findIndex((x) => x === 'セッション' || x === 'sessions');
+      if (iDate < 0 || iCh < 0 || iSessions < 0) continue;
+      const at = (name) => head.findIndex((x) => x === name);
+      const cols = {
+        users: at('総ユーザー'), newUsers: at('新規ユーザー'),
+        engagedSessions: at('エンゲージのあったセッション'),
+        reserveTaps: at('予約タップ'), cv: at('cv'),
+      };
+      const out = [];
+      for (const r of rows.slice(h + 1)) {
+        const channel = String(r[iCh] ?? '').trim();
+        const date = toDate(r[iDate]);
+        if (!channel || !date) continue;
+        const num = (i) => (i < 0 ? null : toNumber(r[i]));
+        out.push({
+          date,
+          channel,
+          key: channelKey(channel),
+          sessions: toNumber(r[iSessions]) ?? 0,
+          users: num(cols.users),
+          newUsers: num(cols.newUsers),
+          engagedSessions: num(cols.engagedSessions),
+          reserveTaps: num(cols.reserveTaps),
+          cv: num(cols.cv),
+        });
+      }
+      if (out.length) return { rows: out };
+    }
+    return null;
   }
 
   /**
@@ -4231,7 +4327,15 @@ __mod["js/data/ga4.js"] = (function () {
     return [...map.values()].sort((a, b) => a.date.localeCompare(b.date) || a.sourceMedium.localeCompare(b.sourceMedium));
   }
 
-  return { isInstagram, isPaid, DEFAULT_ACCOUNT_RULES, accountOf, readGA4Table, importGA4Workbook, primaryRows, campaignRows, propertyFromFileName, mergeGA4 };
+  /** チャネル別の行をマージ（同じプロパティ・同じ週・同じチャネルは新しい方で上書き） */
+  function mergeGA4Channels(oldRows = [], newRows = []) {
+    const key = (r) => `${r.property || ''}|${r.date}|${r.channel}`;
+    const map = new Map(oldRows.map((r) => [key(r), r]));
+    for (const r of newRows) map.set(key(r), r);
+    return [...map.values()].sort((a, b) => a.date.localeCompare(b.date) || a.channel.localeCompare(b.channel));
+  }
+
+  return { isInstagram, isPaid, isOrganicSearch, isSearchAd, DEFAULT_ACCOUNT_RULES, accountOf, readGA4Table, importGA4Workbook, channelKey, readChannelTable, primaryRows, campaignRows, propertyFromFileName, mergeGA4, mergeGA4Channels };
 })();
 
 __mod["js/stats.js"] = (function () {
@@ -4433,7 +4537,7 @@ __mod["js/stats.js"] = (function () {
 
 __mod["js/traffic.js"] = (function () {
   const { addDays, weekdayIndex, parseDateKey, interactions } = __mod["js/analytics.js"];
-  const { isInstagram, isPaid, accountOf, primaryRows } = __mod["js/data/ga4.js"];
+  const { isInstagram, isPaid, isOrganicSearch, isSearchAd, accountOf, primaryRows } = __mod["js/data/ga4.js"];
   const { correlate, linearRegression, mean } = __mod["js/stats.js"];
   // Instagram の投稿活動と、GA4 で計測した HP への流入の関係を調べる。
   // 投稿は日次、GA4 は日次にも週次にもなり得るので、どちらも「週」に揃えて突き合わせる。
@@ -4452,18 +4556,30 @@ __mod["js/traffic.js"] = (function () {
    */
   function weeklyTraffic(ga4Rows, { rules, fallbackAccount = '' } = {}) {
     const weeks = new Map();
+    const blank = (w) => ({
+      week: w,
+      sessions: 0, organic: 0, paid: 0,
+      users: 0, newUsers: 0, engagedSessions: 0,
+      reserveTaps: 0, organicTaps: 0, paidTaps: 0, cv: 0,
+      // Instagram 以外の流入。自然検索（オーガニック）と検索広告（リスティング）を分けて持つ
+      searchOrganic: null, searchAds: null,
+      byAccount: {}, bySource: {},
+    });
+
     for (const r of ga4Rows) {
-      if (!isInstagram(r.sourceMedium)) continue;
       const w = weekStart(r.date);
-      const g =
-        weeks.get(w) ||
-        {
-          week: w,
-          sessions: 0, organic: 0, paid: 0,
-          users: 0, newUsers: 0, engagedSessions: 0,
-          reserveTaps: 0, organicTaps: 0, paidTaps: 0, cv: 0,
-          byAccount: {}, bySource: {},
-        };
+      if (!isInstagram(r.sourceMedium)) {
+        // Instagram 以外は、自然検索と検索広告だけ拾う（相関の相手に使う）
+        const organicSearch = isOrganicSearch(r.sourceMedium);
+        const searchAd = isSearchAd(r.sourceMedium);
+        if (!organicSearch && !searchAd) continue;
+        const g2 = weeks.get(w) || blank(w);
+        const key = organicSearch ? 'searchOrganic' : 'searchAds';
+        g2[key] = (g2[key] ?? 0) + (r.sessions || 0);
+        weeks.set(w, g2);
+        continue;
+      }
+      const g = weeks.get(w) || blank(w);
       const paid = isPaid(r.sourceMedium);
       const s = r.sessions || 0;
       const taps = r.reserveTaps || 0;
@@ -4609,7 +4725,12 @@ __mod["js/traffic.js"] = (function () {
 
   /** 相関の相手（HP 側の指標）。source は必要なデータ源 */
   const TARGETS = [
-    { key: 'organic', label: 'HPへの流入（Instagram）', unit: 'セッション', source: 'ga4', def: '広告を除く Instagram 経由のセッション' },
+    { key: 'organic', label: 'HPへの流入（Instagram／オーガニック）', unit: 'セッション', source: 'ga4', def: 'Instagram 経由のセッション（広告を除く）' },
+    { key: 'sessions', label: 'HPへの流入（Instagram／広告含む）', unit: 'セッション', source: 'ga4', def: 'Instagram 経由のセッション（広告を含む）' },
+    { key: 'searchOrganic', label: 'HPへの流入（オーガニック）', unit: 'セッション', source: 'ga4', def: '自然検索からのセッション（Instagram 以外）' },
+    { key: 'searchAds', label: 'HPへの流入（検索広告）', unit: 'セッション', source: 'ga4', def: 'リスティング広告からのセッション' },
+    { key: 'organicTaps', label: '予約タップ', unit: '予約タップ', source: 'ga4' },
+    { key: 'searchImpressions', label: 'Google 検索での表示回数', unit: '表示', source: 'sc' },
     // 指名検索は、Search Console の日次クリックを「指名の割合」で按分した推定値
     { key: 'brandedClicks', label: 'HPへの流入（指名キーワード）', unit: 'クリック', source: 'sc', estimated: true, def: 'ブランド名を含む検索語からのクリック（日次は指名の割合で按分した推定値）' },
   ];
@@ -4644,6 +4765,25 @@ __mod["js/traffic.js"] = (function () {
   }
 
   /**
+   * チャネル別（Organic Search / Paid Search など）の行を週ごとにまとめる。
+   * GA4 の書き出しが「参照元/メディア」だと Instagram 以外をひとまとめにしていることがあり、
+   * 自然検索と検索広告を分けられない。チャネル別の表があればそちらを使う。
+   */
+  function weeklyChannels(channelRows = [], { from = null, to = null } = {}) {
+    const weeks = new Map();
+    for (const r of channelRows) {
+      if (!r?.date || !r.key) continue;
+      if (from && r.date < from) continue;
+      if (to && r.date > to) continue;
+      const w = weekStart(r.date);
+      const g = weeks.get(w) || { week: w };
+      g[r.key] = (g[r.key] ?? 0) + (r.sessions || 0);
+      weeks.set(w, g);
+    }
+    return [...weeks.values()].sort((a, b) => a.week.localeCompare(b.week));
+  }
+
+  /**
    * GA4 の週と Search Console の週を 1 本にまとめる。
    * どちらか片方しか無くても相関を出せるようにするため、週の和集合を返す。
    */
@@ -4651,7 +4791,9 @@ __mod["js/traffic.js"] = (function () {
     const map = new Map(gaWeeks.map((w) => [w.week, { ...w }]));
     for (const s of scWeeks) {
       const cur = map.get(s.week);
-      if (cur) Object.assign(cur, s);
+      // 値の無い項目（null）で、すでに入っている値を消さない
+      const filled = Object.fromEntries(Object.entries(s).filter(([k, v]) => v !== null || cur?.[k] === undefined));
+      if (cur) Object.assign(cur, filled);
       else map.set(s.week, { ...s });
     }
     return [...map.values()].sort((a, b) => a.week.localeCompare(b.week));
@@ -4906,7 +5048,7 @@ __mod["js/traffic.js"] = (function () {
     return `${per} 約 ${v >= 0 ? '+' : '−'}${body}${unit}${c.significant ? '' : '（参考）'}`;
   }
 
-  return { mean, weekStart, weeklyTraffic, weeklyInstagram, joinWeeks, DRIVERS, ACTION_DRIVERS, ACTION_TARGETS, joinActions, availableActionTargets, TARGETS, weeklySearch, mergeTargetWeeks, availableTargets, correlationTable, laggedCorrelation, landingRate, reachToSiteRate, hpSummary, trafficBreakdown, scatterData, trafficInsights, describeCorrelation, describeEstimate };
+  return { mean, weekStart, weeklyTraffic, weeklyInstagram, joinWeeks, DRIVERS, ACTION_DRIVERS, ACTION_TARGETS, joinActions, availableActionTargets, TARGETS, weeklySearch, weeklyChannels, mergeTargetWeeks, availableTargets, correlationTable, laggedCorrelation, landingRate, reachToSiteRate, hpSummary, trafficBreakdown, scatterData, trafficInsights, describeCorrelation, describeEstimate };
 })();
 
 __mod["js/data/graphApi.js"] = (function () {
@@ -8615,8 +8757,8 @@ __mod["js/app.js"] = (function () {
   const { generateDemo } = __mod["js/data/demo.js"];
   const { importCSV, toCSV, decodeCSV, describeImport, parseCSV, looksGarbled, mergeContentFormats } = __mod["js/data/csv.js"];
   const { readWorkbook, isXlsxName } = __mod["js/data/xlsx.js"];
-  const { importGA4Workbook, readGA4Table, mergeGA4, propertyFromFileName, primaryRows, campaignRows, isInstagram } = __mod["js/data/ga4.js"];
-  const { weeklyTraffic, weeklyInstagram, joinWeeks, correlationTable, laggedCorrelation, landingRate, trafficBreakdown, scatterData, trafficInsights, weekStart, hpSummary, describeEstimate, DRIVERS, TARGETS, weeklySearch, mergeTargetWeeks, availableTargets, reachToSiteRate, ACTION_DRIVERS, ACTION_TARGETS, joinActions, availableActionTargets } = __mod["js/traffic.js"];
+  const { importGA4Workbook, readGA4Table, mergeGA4, mergeGA4Channels, propertyFromFileName, primaryRows, campaignRows, isInstagram } = __mod["js/data/ga4.js"];
+  const { weeklyTraffic, weeklyInstagram, joinWeeks, correlationTable, laggedCorrelation, landingRate, trafficBreakdown, scatterData, trafficInsights, weekStart, hpSummary, describeEstimate, DRIVERS, TARGETS, weeklySearch, mergeTargetWeeks, availableTargets, reachToSiteRate, weeklyChannels, ACTION_DRIVERS, ACTION_TARGETS, joinActions, availableActionTargets } = __mod["js/traffic.js"];
   const { GraphClient, fetchFromGraph } = __mod["js/data/graphApi.js"];
   const { buildReport, toMarkdown, readCorrelation } = __mod["js/report.js"];
   const { toDocx, DOCX_MIME } = __mod["js/docx.js"];
@@ -8918,16 +9060,18 @@ __mod["js/app.js"] = (function () {
     const all = (ds.ga4 || []).filter((r) => r.date >= from && r.date <= to);
     // Search Console の日次も同じ週の範囲でそろえる（GA4 が無くても相関を出せるようにする）
     const scWeeks = weeklySearch(sliceSearchDaily(searchProps, from, to), { brandedShare });
-    if (!all.length && !scWeeks.length) return null;
+    // チャネル別（自然検索・検索広告）。参照元/メディアの表が Instagram だけでも、ここから相関の相手を作れる
+    const chWeeks = weeklyChannels(ds.ga4Channels, { from, to });
+    if (!all.length && !scWeeks.length && !chWeeks.length) return null;
     // 参照元別とキャンペーン別が両方あると二重計上になるので、集計には粗いほうだけを使う
     const rows = primaryRows(all);
 
     // 参照元の振り分けで「どのルールにも当たらない Instagram 流入」を入れる先＝本アカウント
     const fallbackAccount = accounts[0]?.username || ds.account?.username || '(本アカウント)';
-    const hasGA4 = all.length > 0;
+    const hasGA4 = all.length > 0 || chWeeks.length > 0;
     const gaOnlyWeeks = weeklyTraffic(rows, { fallbackAccount });
     // 相関の相手は GA4 と Search Console をまとめた週データ
-    const gaWeeks = mergeTargetWeeks(gaOnlyWeeks, scWeeks);
+    const gaWeeks = mergeTargetWeeks(mergeTargetWeeks(gaOnlyWeeks, scWeeks), chWeeks);
     const igWeeks = weeklyInstagram(posts, daily);
     const joined = joinWeeks(igWeeks, gaWeeks);
     const breakdown = trafficBreakdown(gaOnlyWeeks, { fallbackAccount });
@@ -10112,6 +10256,20 @@ __mod["js/app.js"] = (function () {
     return true;
   }
 
+  /**
+   * 選べない相手があるときに、なぜ出ないかを伝える。
+   * GA4 を Instagram だけに絞って書き出していると、自然検索・検索広告は入ってこない。
+   */
+  function missingTargetNote(t) {
+    if (!t.hasGA4) return '';
+    const missing = TARGETS.filter((x) => ['searchOrganic', 'searchAds'].includes(x.key) && !t.targets.some((y) => y.key === x.key));
+    if (!missing.length) return '';
+    return (
+      `　※「${missing.map((m) => m.label).join('」「')}」は、取り込んだ GA4 に Instagram 以外の参照元/メディアが入っていないため選べません。` +
+      'GA4 で参照元/メディアを絞らずに書き出すと使えるようになります。'
+    );
+  }
+
   const CORR_NOTE =
     'r は −1〜+1 の相関の強さ。p 値が 0.05 未満なら「偶然とは考えにくい」目安です。' +
     '「時期の影響を除いた r」は週の順番を差し引いた値、「増減どうしの r」は前の週からの変化どうしの相関で、' +
@@ -10152,7 +10310,7 @@ __mod["js/app.js"] = (function () {
       target: t.target,
       targets: t.targets,
       label,
-      note: `${CORR_NOTE}「推定値」は週ごとの値から引いた回帰直線の傾きで、投稿側の指標が増えたときに増える流入（獲得数）の目安です。有意でない指標は（参考）としています。`,
+      note: `${CORR_NOTE}「推定値」は週ごとの値から引いた回帰直線の傾きで、投稿側の指標が増えたときに増える流入（獲得数）の目安です。有意でない指標は（参考）としています。${missingTargetNote(t)}`,
     });
 
     // 指名キーワードを選んでいるときだけ、語の設定を出す
@@ -10676,6 +10834,7 @@ __mod["js/app.js"] = (function () {
     let daily = merge ? state.dataset.daily || [] : [];
     let audience = merge ? state.dataset.audience || null : null;
     let ga4 = merge ? state.dataset.ga4 || [] : [];
+    let ga4Channels = merge ? state.dataset.ga4Channels || [] : [];
     let reachBreakdown = merge ? state.dataset.reachBreakdown || [] : [];
     let hashtags = merge ? state.dataset.hashtags || [] : [];
     let followed = merge ? state.dataset.followed || [] : [];
@@ -10711,8 +10870,9 @@ __mod["js/app.js"] = (function () {
           // Excel は GA4 の流入データとして読む
           const sheets = await readWorkbook(buffer);
           const res = importGA4Workbook(sheets, { property: propertyFromFileName(f.name) });
-          if (!res) throw new Error('「日付・参照元/メディア・セッション」の列がある表が見つかりませんでした');
+          if (!res) throw new Error('「日付・参照元/メディア・セッション」または「週開始・チャネル・セッション」の列がある表が見つかりませんでした');
           ga4 = mergeGA4(ga4, res.rows);
+          if (res.channels?.length) ga4Channels = mergeGA4Channels(ga4Channels, res.channels);
           done.push(`${f.name}: GA4 流入 ${res.rows.length}行（${res.sheets.join('・')}）`);
           continue;
         }
@@ -10820,6 +10980,7 @@ __mod["js/app.js"] = (function () {
           postHistory: state.dataset.postHistory || [],
           searchConsole: mergeSearchConsole(state.dataset.searchConsole || [], searchConsole),
           contentFormats: mergeContentFormats(state.dataset.contentFormats, contentFormats),
+          ga4Channels: mergeGA4Channels(state.dataset.ga4Channels || [], ga4Channels),
         },
         '補助データ（リーチ内訳・ハッシュタグ分析など）を取り込みました',
       );
@@ -10837,6 +10998,7 @@ __mod["js/app.js"] = (function () {
         posts,
         audience,
         ga4,
+        ga4Channels,
         reachBreakdown,
         hashtags,
         followed,
@@ -10890,6 +11052,7 @@ __mod["js/app.js"] = (function () {
       dataset.postHistory = pruneHistory(mergeHistory(prev?.postHistory || [], snapshot), dataset.posts);
       // CSV で取り込んだ GA4・リーチ内訳・ソーシャルインサイトの補助データは、API で取り直しても残す
       if (prev?.ga4?.length) dataset.ga4 = prev.ga4;
+      if (prev?.ga4Channels?.length) dataset.ga4Channels = prev.ga4Channels;
       if (prev?.reachBreakdown?.length) dataset.reachBreakdown = prev.reachBreakdown;
       if (prev?.hashtags?.length) dataset.hashtags = prev.hashtags;
       if (prev?.followed?.length) dataset.followed = prev.followed;
