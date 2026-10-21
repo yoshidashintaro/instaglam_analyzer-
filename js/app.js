@@ -10,11 +10,11 @@ import { fmtInt, fmtPct, fmtCompact } from './charts.js';
 import { generateDemo } from './data/demo.js';
 import { importCSV, toCSV, decodeCSV, describeImport, parseCSV, looksGarbled, mergeContentFormats } from './data/csv.js';
 import { readWorkbook, isXlsxName } from './data/xlsx.js';
-import { importGA4Workbook, readGA4Table, mergeGA4, propertyFromFileName, primaryRows, campaignRows, isInstagram } from './data/ga4.js';
+import { importGA4Workbook, readGA4Table, mergeGA4, mergeGA4Channels, propertyFromFileName, primaryRows, campaignRows, isInstagram } from './data/ga4.js';
 import {
   weeklyTraffic, weeklyInstagram, joinWeeks, correlationTable, laggedCorrelation,
   landingRate, trafficBreakdown, scatterData, trafficInsights, weekStart, hpSummary, describeEstimate, DRIVERS, TARGETS,
-  weeklySearch, mergeTargetWeeks, availableTargets, reachToSiteRate,
+  weeklySearch, mergeTargetWeeks, availableTargets, reachToSiteRate, weeklyChannels,
   ACTION_DRIVERS, ACTION_TARGETS, joinActions, availableActionTargets,
 } from './traffic.js';
 import { GraphClient, fetchFromGraph } from './data/graphApi.js';
@@ -311,16 +311,18 @@ function computeTraffic(ds, { startKey, endKey, daily, posts, accounts, account,
   const all = (ds.ga4 || []).filter((r) => r.date >= from && r.date <= to);
   // Search Console の日次も同じ週の範囲でそろえる（GA4 が無くても相関を出せるようにする）
   const scWeeks = weeklySearch(sliceSearchDaily(searchProps, from, to), { brandedShare });
-  if (!all.length && !scWeeks.length) return null;
+  // チャネル別（自然検索・検索広告）。参照元/メディアの表が Instagram だけでも、ここから相関の相手を作れる
+  const chWeeks = weeklyChannels(ds.ga4Channels, { from, to });
+  if (!all.length && !scWeeks.length && !chWeeks.length) return null;
   // 参照元別とキャンペーン別が両方あると二重計上になるので、集計には粗いほうだけを使う
   const rows = primaryRows(all);
 
   // 参照元の振り分けで「どのルールにも当たらない Instagram 流入」を入れる先＝本アカウント
   const fallbackAccount = accounts[0]?.username || ds.account?.username || '(本アカウント)';
-  const hasGA4 = all.length > 0;
+  const hasGA4 = all.length > 0 || chWeeks.length > 0;
   const gaOnlyWeeks = weeklyTraffic(rows, { fallbackAccount });
   // 相関の相手は GA4 と Search Console をまとめた週データ
-  const gaWeeks = mergeTargetWeeks(gaOnlyWeeks, scWeeks);
+  const gaWeeks = mergeTargetWeeks(mergeTargetWeeks(gaOnlyWeeks, scWeeks), chWeeks);
   const igWeeks = weeklyInstagram(posts, daily);
   const joined = joinWeeks(igWeeks, gaWeeks);
   const breakdown = trafficBreakdown(gaOnlyWeeks, { fallbackAccount });
@@ -734,22 +736,32 @@ function renderKpi(v) {
     `運用で決めた指標の定義・基準・目標に対する進捗です。期間の合計を「月あたり」に直して比べています` +
     `（いまの期間は ${days}日間 → ${DAYS_PER_MONTH.toFixed(1)}日ぶんに換算）。率の指標は換算しません。`;
 
-  // --- KGI ---
-  const kgi = rows.find((r) => r.stage === 'kgi');
+  // --- KGI（複数ある） ---
+  const kgis = rows.filter((r) => r.stage === 'kgi');
   const box = $('#kpi-kgi');
-  if (!kgi || kgi.monthly === null) {
-    box.replaceChildren(el('p', { className: 'sub', textContent: '保存数とフォロワー純増のデータが必要です' }));
+  const usable = kgis.filter((k) => k.monthly !== null);
+  if (!usable.length) {
+    box.replaceChildren(el('p', { className: 'sub', textContent: 'KGI を出すためのデータ（保存・フォロワー純増・GA4 の流入）がまだありません' }));
   } else {
     box.replaceChildren(
-      el('div', { className: 'kgi-box' },
-        el('div', { className: 'kgi-value' }, fmtKpi(kgi, kgi.monthly), el('span', { className: 'kgi-unit', textContent: '／月' })),
-        el('p', {
-          className: 'kgi-sub',
-          textContent: `基準 ${fmtKpi(kgi, kgi.baseline)} ・ 目標 ${fmtKpi(kgi, kgi.target)}${kgi.progress === null ? '' : `（達成率 ${Math.round(kgi.progress)}%）`}`,
-        }),
-        el('p', { className: 'kgi-sub', textContent: `内訳：保存 ${fmtKpi(kgi, monthlyOf(rows, 'saves'))} ＋ 純増 ${fmtKpi(kgi, monthlyOf(rows, 'netFollowers'))}` }),
+      ...kgis.map((k) =>
+        el('div', { className: 'kgi-item' },
+          el('p', { className: 'kgi-name', textContent: k.label }),
+          k.monthly === null
+            ? el('p', { className: 'sub', textContent: `${k.source} のデータがありません` })
+            : el('div', { className: 'kgi-box' },
+                el('div', { className: 'kgi-value' }, fmtKpi(k, k.monthly), el('span', { className: 'kgi-unit', textContent: '／月' })),
+                el('p', {
+                  className: 'kgi-sub',
+                  textContent: `基準 ${fmtKpi(k, k.baseline)} ・ 目標 ${fmtKpi(k, k.target)}${k.progress === null ? '' : `（達成率 ${Math.round(k.progress)}%）`}`,
+                }),
+                k.key === 'interestGain'
+                  ? el('p', { className: 'kgi-sub', textContent: `内訳：保存 ${fmtKpi(k, monthlyOf(rows, 'saves'))} ＋ 純増 ${fmtKpi(k, monthlyOf(rows, 'netFollowers'))}` })
+                  : el('p', { className: 'kgi-sub', textContent: k.def }),
+              ),
+          k.monthly === null ? null : goalBar(k),
+        ),
       ),
-      goalBar(kgi),
     );
   }
 
@@ -1458,7 +1470,7 @@ function renderTraffic(v) {
 }
 
 /** 相関表の共通描画。「投稿と行動」「投稿と流入」で同じ見た目にする */
-function renderCorrTable({ ids, table, weeks, target, targets, label, note, cols = 9 }) {
+function renderCorrTable({ ids, table, weeks, target, targets, label, note, hint = '', cols = 9 }) {
   const targetSel = $(ids.target);
   const targetSig = targets.map((x) => x.key).join('|');
   if (targetSel.dataset.sig !== targetSig) {
@@ -1471,7 +1483,8 @@ function renderCorrTable({ ids, table, weeks, target, targets, label, note, cols
   const tbody = $(`${ids.table} tbody`);
   if (!table.length) {
     tbody.replaceChildren(el('tr', {}, el('td', { colSpan: cols, textContent: ids.empty })));
-    $(ids.note).textContent = '';
+    // 表が出せないときこそ「なぜ選べないか」が必要なので、注記は残す
+    $(ids.note).textContent = hint;
     return false;
   }
 
@@ -1501,8 +1514,28 @@ function renderCorrTable({ ids, table, weeks, target, targets, label, note, cols
       return tr;
     }),
   );
-  $(ids.note).textContent = note;
+  $(ids.note).textContent = note + hint;
   return true;
+}
+
+/**
+ * 選べない相手があるときに、なぜ出ないかを伝える。
+ * GA4 を Instagram だけに絞って書き出していると、自然検索・検索広告は入ってこない。
+ */
+const TARGET_HINTS = {
+  organic: 'GA4（Instagram からの流入）',
+  sessions: 'GA4（Instagram からの流入）',
+  searchOrganic: 'GA4 のチャネル別の書き出し（Organic Search）',
+  searchAds: 'GA4 のチャネル別の書き出し（Paid Search）',
+  organicTaps: 'GA4（予約タップのイベント）',
+  searchImpressions: 'Search Console の書き出し',
+  brandedClicks: 'Search Console の書き出し（サイトのプロパティ）',
+};
+
+function missingTargetNote(t) {
+  const missing = TARGETS.filter((x) => !t.targets.some((y) => y.key === x.key));
+  if (!missing.length) return '';
+  return `　※ ${missing.map((m) => `「${m.label}」`).join('')}はデータが無いため選べません（必要なデータ：${[...new Set(missing.map((m) => TARGET_HINTS[m.key]))].join('／')}）。`;
 }
 
 const CORR_NOTE =
@@ -1511,12 +1544,35 @@ const CORR_NOTE =
   'どちらも元の r より大きく下がる場合は、両方が同時期に伸びただけの見かけの相関を疑ってください。' +
   '相関は因果ではありません。';
 
+/**
+ * 行動側で選べない相手があるときに、何を取り込めば使えるかを伝える。
+ * 黙って選択肢から消えると「実装されていない」ように見えてしまうため。
+ */
+const ACTION_TARGET_HINTS = {
+  accountNonFollowerReach: 'リーチ内訳の書き出し（非フォロワー比率の1行サマリー）。日次の実数が無くても、比率から推定して使えます',
+  keepActions: '投稿データ（保存・シェア）',
+  profileVisits: '日次のプロフィールアクセス（Visits.csv など）',
+  newFollows: '日次のフォロー（Follows.csv など）',
+};
+
+function missingActionNote(a) {
+  const missing = ACTION_TARGETS.filter((t) => !a.targets.some((x) => x.key === t.key));
+  if (!missing.length) return '';
+  return `　※ ${missing.map((m) => `「${m.label}」`).join('')}はデータが無いため選べません（必要なデータ：${missing.map((m) => ACTION_TARGET_HINTS[m.key]).join('／')}）。`;
+}
+
 /** 投稿と行動（保存・プロフィールアクセス・フォロー）の相関 */
 function renderActionCorrelation(v) {
   const a = v.actions;
   const card = $('#action-correlation-card');
   card.hidden = !a.targets.length;
   if (card.hidden) return;
+  // 非フォロワーへのリーチは、実数が無ければリーチ内訳の比率から推定している。
+  // 他のグラフと同じように（推定）と付けて、実測と区別できるようにする
+  const estimated = v.nonFollowerEstimated;
+  const withMark = (t) =>
+    estimated && t.key === 'accountNonFollowerReach' ? { ...t, label: `${t.label}（推定）` } : t;
+
   renderCorrTable({
     ids: {
       target: '#action-corr-target', sub: '#action-corr-sub', table: '#action-corr-table', note: '#action-corr-note',
@@ -1525,9 +1581,10 @@ function renderActionCorrelation(v) {
     table: a.table,
     weeks: a.weeks.length,
     target: a.target,
-    targets: a.targets,
-    label: ACTION_TARGETS.find((x) => x.key === a.target)?.label ?? '',
+    targets: a.targets.map(withMark),
+    label: withMark(ACTION_TARGETS.find((x) => x.key === a.target) ?? {}).label ?? '',
     note: `${CORR_NOTE}「推定値」は、投稿側の指標が増えたときに行動がどれだけ増えるかの目安です。`,
+    hint: missingActionNote(a),
   });
 }
 
@@ -1546,6 +1603,7 @@ function renderCorrelation(v) {
     targets: t.targets,
     label,
     note: `${CORR_NOTE}「推定値」は週ごとの値から引いた回帰直線の傾きで、投稿側の指標が増えたときに増える流入（獲得数）の目安です。有意でない指標は（参考）としています。`,
+    hint: missingTargetNote(t),
   });
 
   // 指名キーワードを選んでいるときだけ、語の設定を出す
@@ -2069,6 +2127,7 @@ async function handleCSVFiles(files) {
   let daily = merge ? state.dataset.daily || [] : [];
   let audience = merge ? state.dataset.audience || null : null;
   let ga4 = merge ? state.dataset.ga4 || [] : [];
+  let ga4Channels = merge ? state.dataset.ga4Channels || [] : [];
   let reachBreakdown = merge ? state.dataset.reachBreakdown || [] : [];
   let hashtags = merge ? state.dataset.hashtags || [] : [];
   let followed = merge ? state.dataset.followed || [] : [];
@@ -2104,8 +2163,9 @@ async function handleCSVFiles(files) {
         // Excel は GA4 の流入データとして読む
         const sheets = await readWorkbook(buffer);
         const res = importGA4Workbook(sheets, { property: propertyFromFileName(f.name) });
-        if (!res) throw new Error('「日付・参照元/メディア・セッション」の列がある表が見つかりませんでした');
+        if (!res) throw new Error('「日付・参照元/メディア・セッション」または「週開始・チャネル・セッション」の列がある表が見つかりませんでした');
         ga4 = mergeGA4(ga4, res.rows);
+        if (res.channels?.length) ga4Channels = mergeGA4Channels(ga4Channels, res.channels);
         done.push(`${f.name}: GA4 流入 ${res.rows.length}行（${res.sheets.join('・')}）`);
         continue;
       }
@@ -2213,6 +2273,7 @@ async function handleCSVFiles(files) {
         postHistory: state.dataset.postHistory || [],
         searchConsole: mergeSearchConsole(state.dataset.searchConsole || [], searchConsole),
         contentFormats: mergeContentFormats(state.dataset.contentFormats, contentFormats),
+        ga4Channels: mergeGA4Channels(state.dataset.ga4Channels || [], ga4Channels),
       },
       '補助データ（リーチ内訳・ハッシュタグ分析など）を取り込みました',
     );
@@ -2230,6 +2291,7 @@ async function handleCSVFiles(files) {
       posts,
       audience,
       ga4,
+      ga4Channels,
       reachBreakdown,
       hashtags,
       followed,
@@ -2283,6 +2345,7 @@ async function handleAPISubmit(e) {
     dataset.postHistory = pruneHistory(mergeHistory(prev?.postHistory || [], snapshot), dataset.posts);
     // CSV で取り込んだ GA4・リーチ内訳・ソーシャルインサイトの補助データは、API で取り直しても残す
     if (prev?.ga4?.length) dataset.ga4 = prev.ga4;
+    if (prev?.ga4Channels?.length) dataset.ga4Channels = prev.ga4Channels;
     if (prev?.reachBreakdown?.length) dataset.reachBreakdown = prev.reachBreakdown;
     if (prev?.hashtags?.length) dataset.hashtags = prev.hashtags;
     if (prev?.followed?.length) dataset.followed = prev.followed;

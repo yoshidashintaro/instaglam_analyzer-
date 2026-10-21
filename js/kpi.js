@@ -31,6 +31,12 @@ export const KPI_DEFS = [
     note: '保存とフォロワー純増は「興味を持った人が取った行動」なので、足して1本の目標にしています。',
   },
   {
+    key: 'hpReferrals', stage: 'kgi', kind: 'monthly', unit: '',
+    label: 'インスタからHPへの誘導数', def: '広告を除く Instagram 経由のセッション',
+    baseline: 710, target: 900, source: 'GA4（UTM別）',
+    note: 'Instagram を見た人が、実際にホームページまで来た数です。',
+  },
+  {
     key: 'saves', stage: 'keep', kind: 'monthly', unit: '',
     label: '保存数', def: '全投稿の保存の合計',
     baseline: 122, target: 250, source: 'インサイト',
@@ -120,9 +126,14 @@ export function kpiValues({ summary, posts = [], daily = [], traffic = null, si 
     nonFollowerReach: num(si?.totals?.nonFollowerReach) ?? num(totals.nonFollowerReach),
     followRate: ratio(follows, profileVisits),
     organicSessions: num(traffic?.breakdown?.totals?.organic),
+    // KGI：インスタからHPへの誘導数（オーガニックHP流入と同じ数字を、最終目標として見る）
+    hpReferrals: num(traffic?.breakdown?.totals?.organic),
     organicTapRate: num(traffic?.breakdown?.organicTapRate),
     // 取り込んだデータの中身を画面で確かめられるようにする注記
     notes: {
+      hpReferrals: (traffic?.properties || []).length
+        ? `GA4 プロパティ: ${traffic.properties.join('・')}${traffic.properties.length > 1 ? ' の合計' : ''}`
+        : null,
       organicSessions: (traffic?.properties || []).length
         ? `GA4 プロパティ: ${traffic.properties.join('・')}${traffic.properties.length > 1 ? ' の合計' : ''}`
         : null,
@@ -134,6 +145,7 @@ export function kpiValues({ summary, posts = [], daily = [], traffic = null, si 
       netFollowers: daysWith(daily, 'netChange', 'follows'),
       // GA4 は週単位で突き合わせているので、週数×7 を日数とみなす
       organicSessions: traffic?.breakdown?.weeks ? traffic.breakdown.weeks * 7 : null,
+      hpReferrals: traffic?.breakdown?.weeks ? traffic.breakdown.weeks * 7 : null,
     },
   };
 }

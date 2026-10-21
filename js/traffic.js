@@ -1,7 +1,7 @@
 // Instagram の投稿活動と、GA4 で計測した HP への流入の関係を調べる。
 // 投稿は日次、GA4 は日次にも週次にもなり得るので、どちらも「週」に揃えて突き合わせる。
 import { addDays, weekdayIndex, parseDateKey, interactions } from './analytics.js';
-import { isInstagram, isPaid, accountOf, primaryRows } from './data/ga4.js';
+import { isInstagram, isPaid, isOrganicSearch, isSearchAd, accountOf, primaryRows } from './data/ga4.js';
 import { correlate, linearRegression, mean } from './stats.js';
 
 /** その日が属する週の月曜日 */
@@ -15,18 +15,30 @@ export function weekStart(dateKey) {
  */
 export function weeklyTraffic(ga4Rows, { rules, fallbackAccount = '' } = {}) {
   const weeks = new Map();
+  const blank = (w) => ({
+    week: w,
+    sessions: 0, organic: 0, paid: 0,
+    users: 0, newUsers: 0, engagedSessions: 0,
+    reserveTaps: 0, organicTaps: 0, paidTaps: 0, cv: 0,
+    // Instagram 以外の流入。自然検索（オーガニック）と検索広告（リスティング）を分けて持つ
+    searchOrganic: null, searchAds: null,
+    byAccount: {}, bySource: {},
+  });
+
   for (const r of ga4Rows) {
-    if (!isInstagram(r.sourceMedium)) continue;
     const w = weekStart(r.date);
-    const g =
-      weeks.get(w) ||
-      {
-        week: w,
-        sessions: 0, organic: 0, paid: 0,
-        users: 0, newUsers: 0, engagedSessions: 0,
-        reserveTaps: 0, organicTaps: 0, paidTaps: 0, cv: 0,
-        byAccount: {}, bySource: {},
-      };
+    if (!isInstagram(r.sourceMedium)) {
+      // Instagram 以外は、自然検索と検索広告だけ拾う（相関の相手に使う）
+      const organicSearch = isOrganicSearch(r.sourceMedium);
+      const searchAd = isSearchAd(r.sourceMedium);
+      if (!organicSearch && !searchAd) continue;
+      const g2 = weeks.get(w) || blank(w);
+      const key = organicSearch ? 'searchOrganic' : 'searchAds';
+      g2[key] = (g2[key] ?? 0) + (r.sessions || 0);
+      weeks.set(w, g2);
+      continue;
+    }
+    const g = weeks.get(w) || blank(w);
     const paid = isPaid(r.sourceMedium);
     const s = r.sessions || 0;
     const taps = r.reserveTaps || 0;
@@ -139,6 +151,7 @@ export const ACTION_DRIVERS = [
 
 /** 「投稿と行動の相関」の相手（Instagram 内で起きた行動） */
 export const ACTION_TARGETS = [
+  { key: 'accountNonFollowerReach', label: '非フォロワーへのリーチ', unit: 'リーチ' },
   { key: 'keepActions', label: '保存数＋シェア数', unit: '件' },
   { key: 'profileVisits', label: 'プロフィールアクセス', unit: 'アクセス' },
   { key: 'newFollows', label: '新規フォロー', unit: 'フォロー' },
@@ -157,6 +170,8 @@ export function joinActions(igWeeks = [], { dropPartial = true } = {}) {
       // 保存とシェアは「残す（興味）」の行動としてまとめて見る
       keepActions: w.saves === null && w.shares === null ? null : (w.saves ?? 0) + (w.shares ?? 0),
       profileVisits: w.profileVisits,
+      // 投稿が「フォロワー以外」にどれだけ届いたか
+      accountNonFollowerReach: w.accountNonFollowerReach,
       // アカウント全体の新規フォロー。日次が無ければ投稿由来のフォローで代用する
       newFollows: w.accountFollows ?? (w.postFollows || null),
     },
@@ -172,7 +187,12 @@ export function availableActionTargets(rows = []) {
 
 /** 相関の相手（HP 側の指標）。source は必要なデータ源 */
 export const TARGETS = [
-  { key: 'organic', label: 'HPへの流入（Instagram）', unit: 'セッション', source: 'ga4', def: '広告を除く Instagram 経由のセッション' },
+  { key: 'organic', label: 'HPへの流入（Instagram／オーガニック）', unit: 'セッション', source: 'ga4', def: 'Instagram 経由のセッション（広告を除く）' },
+  { key: 'sessions', label: 'HPへの流入（Instagram／広告含む）', unit: 'セッション', source: 'ga4', def: 'Instagram 経由のセッション（広告を含む）' },
+  { key: 'searchOrganic', label: 'HPへの流入（オーガニック）', unit: 'セッション', source: 'ga4', def: '自然検索からのセッション（Instagram 以外）' },
+  { key: 'searchAds', label: 'HPへの流入（検索広告）', unit: 'セッション', source: 'ga4', def: 'リスティング広告からのセッション' },
+  { key: 'organicTaps', label: '予約タップ', unit: '予約タップ', source: 'ga4' },
+  { key: 'searchImpressions', label: 'Google 検索での表示回数', unit: '表示', source: 'sc' },
   // 指名検索は、Search Console の日次クリックを「指名の割合」で按分した推定値
   { key: 'brandedClicks', label: 'HPへの流入（指名キーワード）', unit: 'クリック', source: 'sc', estimated: true, def: 'ブランド名を含む検索語からのクリック（日次は指名の割合で按分した推定値）' },
 ];
@@ -207,6 +227,25 @@ export function weeklySearch(scDaily = [], { brandedShare = null } = {}) {
 }
 
 /**
+ * チャネル別（Organic Search / Paid Search など）の行を週ごとにまとめる。
+ * GA4 の書き出しが「参照元/メディア」だと Instagram 以外をひとまとめにしていることがあり、
+ * 自然検索と検索広告を分けられない。チャネル別の表があればそちらを使う。
+ */
+export function weeklyChannels(channelRows = [], { from = null, to = null } = {}) {
+  const weeks = new Map();
+  for (const r of channelRows) {
+    if (!r?.date || !r.key) continue;
+    if (from && r.date < from) continue;
+    if (to && r.date > to) continue;
+    const w = weekStart(r.date);
+    const g = weeks.get(w) || { week: w };
+    g[r.key] = (g[r.key] ?? 0) + (r.sessions || 0);
+    weeks.set(w, g);
+  }
+  return [...weeks.values()].sort((a, b) => a.week.localeCompare(b.week));
+}
+
+/**
  * GA4 の週と Search Console の週を 1 本にまとめる。
  * どちらか片方しか無くても相関を出せるようにするため、週の和集合を返す。
  */
@@ -214,7 +253,9 @@ export function mergeTargetWeeks(gaWeeks = [], scWeeks = []) {
   const map = new Map(gaWeeks.map((w) => [w.week, { ...w }]));
   for (const s of scWeeks) {
     const cur = map.get(s.week);
-    if (cur) Object.assign(cur, s);
+    // 値の無い項目（null）で、すでに入っている値を消さない
+    const filled = Object.fromEntries(Object.entries(s).filter(([k, v]) => v !== null || cur?.[k] === undefined));
+    if (cur) Object.assign(cur, filled);
     else map.set(s.week, { ...s });
   }
   return [...map.values()].sort((a, b) => a.week.localeCompare(b.week));
@@ -234,7 +275,8 @@ export function correlationTable(joined, { target = 'organic', drivers = DRIVERS
   if (joined.length < 3) return [];
   const trend = joined.map((_, i) => i);
   const y = joined.map((r) => r.ga[target] ?? 0);
-  return drivers.map((d) => {
+  // 相手と同じ指標は投稿側から外す（自分自身との相関になってしまうため）
+  return drivers.filter((d) => d.key !== target).map((d) => {
     const x = joined.map((r) => r.ig[d.key] ?? 0);
     const usable = x.some((v) => v !== 0);
     // 推定値：回帰直線の傾き × 単位（投稿 +1件で流入が何セッション増えるか）
@@ -248,7 +290,7 @@ export function correlationTable(joined, { target = 'organic', drivers = DRIVERS
 export function laggedCorrelation(joined, { target = 'organic', lag = 1, drivers = DRIVERS } = {}) {
   if (joined.length < lag + 3) return [];
   const y = joined.map((r) => r.ga[target] ?? 0).slice(lag);
-  return drivers.map((d) => {
+  return drivers.filter((d) => d.key !== target).map((d) => {
     const x = joined.map((r) => r.ig[d.key] ?? 0).slice(0, -lag);
     if (!x.some((v) => v !== 0)) return null;
     return { ...d, lag, ...correlate(x, y) };

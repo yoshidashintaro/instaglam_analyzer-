@@ -76,6 +76,36 @@ export function isPaid(sourceMedium) {
   return /\/\s*(paid|cpc|ppc|cpm)\b/.test(s) || /\bpaid\b/.test(s.split('/')[1] || '');
 }
 
+/** 検索エンジン（自然検索・検索広告の判定に使う） */
+const SEARCH_ENGINES = ['google', 'yahoo', 'bing', 'microsoft', 'duckduckgo', 'baidu', 'naver', 'ecosia'];
+
+const splitSourceMedium = (sourceMedium) => {
+  const [source = '', medium = ''] = String(sourceMedium ?? '').toLowerCase().split('/');
+  // 「paid-search」「paid_search」などの表記ゆれをまとめる
+  return { source: source.trim(), medium: medium.trim().replace(/[\s_-]/g, '') };
+};
+
+/**
+ * 自然検索からの流入か（Instagram は除く）。
+ * メディアが organic のものを自然検索とみなす。
+ */
+export function isOrganicSearch(sourceMedium) {
+  if (isInstagram(sourceMedium)) return false;
+  return /organic/.test(splitSourceMedium(sourceMedium).medium);
+}
+
+/**
+ * 検索広告（リスティング広告）からの流入か。
+ * メディアが cpc / ppc / paidsearch などで、かつ参照元が検索エンジンのもの。
+ * SNS の広告（ig / paid など）は含めない。
+ */
+export function isSearchAd(sourceMedium) {
+  if (isInstagram(sourceMedium)) return false;
+  const { source, medium } = splitSourceMedium(sourceMedium);
+  if (!/^(cpc|ppc|paid|paidsearch|sem|cpm)$/.test(medium)) return false;
+  return SEARCH_ENGINES.some((e) => source.includes(e));
+}
+
 /**
  * 参照元/メディアから Instagram アカウントを推定する既定ルール。
  * 利用者が画面で対応づけを上書きできるよう、ルールは配列で返す。
@@ -153,15 +183,81 @@ export function readGA4Table(rows) {
  */
 export function importGA4Workbook(sheets, { property = '' } = {}) {
   const rows = [];
+  const channels = [];
   const found = [];
   for (const sheet of sheets) {
+    // チャネル別（Organic Search / Paid Search など）の表を先に見る。
+    // 参照元/メディアの表は Instagram 以外をまとめていることがあり、自然検索・検索広告を分けられないため。
+    const ch = readChannelTable(sheet.rows);
+    if (ch) {
+      for (const r of ch.rows) channels.push({ ...r, property, sheet: sheet.name });
+      found.push(`${sheet.name}（${ch.rows.length}行・チャネル別）`);
+      continue;
+    }
     const table = readGA4Table(sheet.rows);
     if (!table) continue;
     for (const r of table.rows) rows.push({ ...r, property, sheet: sheet.name });
     found.push(`${sheet.name}（${table.rows.length}行・${table.level === 'campaign' ? 'キャンペーン別' : '参照元別'}）`);
   }
-  if (!rows.length) return null;
-  return { rows, sheets: found };
+  if (!rows.length && !channels.length) return null;
+  return { rows, channels, sheets: found };
+}
+
+/** GA4 の既定チャネルグループ → アプリ内のキー */
+const CHANNEL_KEYS = {
+  organicsearch: 'searchOrganic',
+  paidsearch: 'searchAds',
+  自然検索: 'searchOrganic',
+  有料検索: 'searchAds',
+  検索広告: 'searchAds',
+};
+
+/** チャネル名をキーにする（表記ゆれを吸収） */
+export const channelKey = (name) => CHANNEL_KEYS[String(name ?? '').toLowerCase().replace(/[\s_-]/g, '')] || null;
+
+const CHANNEL_HEADS = ['チャネル', 'チャネルグループ', 'channel', 'defaultchannelgroup', 'sessiondefaultchannelgroup'];
+const CHANNEL_DATE_HEADS = ['週開始', '日付', 'date', 'week', 'weekstart'];
+
+/**
+ * 「週開始・チャネル・セッション」のチャネル別の表を読む。
+ * GA4 の「セッションのデフォルト チャネル グループ」で書き出したもの。
+ * @returns {null|{rows:{date:string, channel:string, key:?string, sessions:number, ...}[]}}
+ */
+export function readChannelTable(rows) {
+  if (!rows?.length) return null;
+  for (let h = 0; h < Math.min(rows.length, 8); h++) {
+    const head = (rows[h] || []).map((x) => String(x ?? '').toLowerCase().replace(/[\s\n_-]/g, ''));
+    const iDate = head.findIndex((x) => CHANNEL_DATE_HEADS.some((a) => x === a.toLowerCase()));
+    const iCh = head.findIndex((x) => CHANNEL_HEADS.some((a) => x === a.toLowerCase()));
+    const iSessions = head.findIndex((x) => x === 'セッション' || x === 'sessions');
+    if (iDate < 0 || iCh < 0 || iSessions < 0) continue;
+    const at = (name) => head.findIndex((x) => x === name);
+    const cols = {
+      users: at('総ユーザー'), newUsers: at('新規ユーザー'),
+      engagedSessions: at('エンゲージのあったセッション'),
+      reserveTaps: at('予約タップ'), cv: at('cv'),
+    };
+    const out = [];
+    for (const r of rows.slice(h + 1)) {
+      const channel = String(r[iCh] ?? '').trim();
+      const date = toDate(r[iDate]);
+      if (!channel || !date) continue;
+      const num = (i) => (i < 0 ? null : toNumber(r[i]));
+      out.push({
+        date,
+        channel,
+        key: channelKey(channel),
+        sessions: toNumber(r[iSessions]) ?? 0,
+        users: num(cols.users),
+        newUsers: num(cols.newUsers),
+        engagedSessions: num(cols.engagedSessions),
+        reserveTaps: num(cols.reserveTaps),
+        cv: num(cols.cv),
+      });
+    }
+    if (out.length) return { rows: out };
+  }
+  return null;
 }
 
 /**
@@ -192,4 +288,12 @@ export function mergeGA4(oldRows = [], newRows = []) {
   const map = new Map(oldRows.map((r) => [key(r), r]));
   for (const r of newRows) map.set(key(r), r);
   return [...map.values()].sort((a, b) => a.date.localeCompare(b.date) || a.sourceMedium.localeCompare(b.sourceMedium));
+}
+
+/** チャネル別の行をマージ（同じプロパティ・同じ週・同じチャネルは新しい方で上書き） */
+export function mergeGA4Channels(oldRows = [], newRows = []) {
+  const key = (r) => `${r.property || ''}|${r.date}|${r.channel}`;
+  const map = new Map(oldRows.map((r) => [key(r), r]));
+  for (const r of newRows) map.set(key(r), r);
+  return [...map.values()].sort((a, b) => a.date.localeCompare(b.date) || a.channel.localeCompare(b.channel));
 }

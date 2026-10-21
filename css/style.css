@@ -466,3 +466,9 @@ dialog.dlg-wide { width: min(860px, calc(100vw - 32px)); overflow: auto; }
 .brand-terms { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 6px 0 0; font-size: 12px; }
 .brand-terms input { flex: 1; min-width: 200px; max-width: 420px; padding: 4px 8px; font: inherit; font-size: 12px; }
 .brand-terms .sub { flex-basis: 100%; margin: 0; }
+
+/* KGI が複数あるとき */
+.kgi-item + .kgi-item { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--grid); }
+.kgi-name { margin: 0; font-size: 13px; font-weight: 600; color: var(--text-secondary); text-align: center; }
+.kgi-item .kgi-box { padding-top: 2px; }
+.kgi-item .kgi-value { font-size: 28px; }
