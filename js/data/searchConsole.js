@@ -404,3 +404,94 @@ export function sliceSearchDaily(props = [], startKey, endKey) {
     }))
     .sort((a, b) => a.date.localeCompare(b.date));
 }
+
+// ---------- 指名キーワード ----------
+
+/**
+ * 指名キーワード（ブランド名を含む検索語）の既定の語。
+ * Instagram のアカウント名とサイトのホスト名から推測する。
+ * 画面から足し引きできるので、ここはあくまで初期値。
+ */
+export function defaultBrandTerms(props = [], accountNames = []) {
+  const terms = new Set();
+  for (const name of accountNames) if (String(name || '').trim().length >= 2) terms.add(String(name).trim());
+  for (const p of props) {
+    if (p.kind === 'instagram' && p.account) {
+      // miselclinic_osaka → miselclinic（アカウント名の前半をブランド名とみなす）
+      const base = p.account.split(/[._-]/)[0];
+      if (base.length >= 3) terms.add(base.toLowerCase());
+    }
+    if (p.kind === 'site' && p.id) {
+      const host = p.id.replace(/^www./, '').split('.')[0];
+      if (host.length >= 3) terms.add(host.toLowerCase());
+    }
+  }
+  return [...terms];
+}
+
+const normQuery = (s) => String(s ?? '').toLowerCase().replace(/[\s　]/g, '');
+
+/**
+ * 指名キーワードの集計。
+ * 検索語に term のどれかが含まれていれば指名とみなす。
+ * @returns {null|{clicks:number, impressions:number, total:number, share:number, matched:number, terms:string[], examples:string[]}}
+ */
+export function brandedQueries(props = [], terms = []) {
+  const list = terms.map(normQuery).filter(Boolean);
+  if (!list.length) return null;
+  const rows = queryRows(props);
+  if (!rows.length) return null;
+  const hit = rows.filter((r) => {
+    const q = normQuery(r.query);
+    return list.some((t) => q.includes(t));
+  });
+  const total = rows.reduce((s, r) => s + r.clicks, 0);
+  const clicks = hit.reduce((s, r) => s + r.clicks, 0);
+  return {
+    clicks,
+    impressions: hit.reduce((s, r) => s + r.impressions, 0),
+    total,
+    // 全クリックに占める指名の割合。日次を指名ぶんに割り振るときに使う
+    share: total ? clicks / total : null,
+    matched: hit.length,
+    terms: list,
+    examples: hit.slice(0, 5).map((r) => r.query),
+  };
+}
+
+/**
+ * 実際の検索語に当たるブランド名を推測する。
+ *
+ * 「ミセルクリニック大阪」のようなアカウント名は、検索語（「ミセルクリニック 梅田」など）に
+ * そのままでは含まれない。そこで名前の先頭から1文字ずつ短くして当たり具合を調べ、
+ * 「短くしてもこれ以上は増えない」ところで止める。地名や院名の一覧を持たずに済む。
+ *
+ * @param {object[]} props 判定に使う Search Console のプロパティ
+ * @param {string[]} candidates アカウント表示名・ユーザー名など
+ * @param {{minLength?:number, keepRatio?:number}} opts keepRatio は「最大の当たり具合の何割まで許すか」
+ * @returns {string[]} 実際に検索語へ当たった語（当たらなければ空）
+ */
+export function guessBrandTerms(props = [], candidates = [], { minLength = 2, keepRatio = 0.8 } = {}) {
+  const rows = queryRows(props);
+  if (!rows.length) return [];
+  const queries = rows.map((r) => ({ q: normQuery(r.query), clicks: r.clicks }));
+  const coverage = (term) => queries.filter((x) => x.q.includes(term)).reduce((s, x) => s + x.clicks, 0);
+
+  const out = [];
+  for (const raw of candidates) {
+    const name = normQuery(raw);
+    if (name.length < minLength) continue;
+    // 長さごとの当たり具合（短いほど必ず増えるか同じ）
+    const scored = [];
+    for (let len = name.length; len >= minLength; len--) {
+      const term = name.slice(0, len);
+      scored.push({ term, clicks: coverage(term) });
+    }
+    const best = Math.max(...scored.map((x) => x.clicks));
+    if (!best) continue;
+    // 当たり具合がほぼ最大のまま、いちばん長い（＝誤って拾いにくい）語を選ぶ
+    const pick = scored.find((x) => x.clicks >= best * keepRatio);
+    if (pick && !out.includes(pick.term)) out.push(pick.term);
+  }
+  return out;
+}

@@ -15,6 +15,7 @@ import {
   weeklyTraffic, weeklyInstagram, joinWeeks, correlationTable, laggedCorrelation,
   landingRate, trafficBreakdown, scatterData, trafficInsights, weekStart, hpSummary, describeEstimate, DRIVERS, TARGETS,
   weeklySearch, mergeTargetWeeks, availableTargets, reachToSiteRate,
+  ACTION_DRIVERS, ACTION_TARGETS, joinActions, availableActionTargets,
 } from './traffic.js';
 import { GraphClient, fetchFromGraph } from './data/graphApi.js';
 import { buildReport, toMarkdown, readCorrelation } from './report.js';
@@ -34,6 +35,7 @@ import {
   readSearchConsoleZip, readSearchConsoleCSV, mergeSearchConsole, describeSearchConsole,
   instagramProperties, siteProperties, postIndex as searchPostIndex, searchSummary,
   queryRows as searchQueryRows, underperformingQueries, sliceSearchDaily, shortcodeOfUrl, buildProperty,
+  defaultBrandTerms, guessBrandTerms, brandedQueries,
 } from './data/searchConsole.js';
 import {
   HISTORY_METRICS, HISTORY_LABELS, snapshotPosts, mergeHistory, postTimeline,
@@ -54,6 +56,8 @@ const DEFAULTS = {
   searchScope: 'instagram', searchSort: 'clicks',
   // KPI の基準・目標の上書き（{ 指標キー: { baseline, target } }）
   kpiGoals: {},
+  // 相関：行動側の指標と、指名キーワードの語
+  actionTarget: 'keepActions', brandTerms: [],
 };
 const state = {
   dataset: store.loadDataset(),
@@ -218,8 +222,32 @@ function compute() {
     filter: scoped.find((p) => p.filter)?.filter || null,
   };
 
+  // 指名キーワード（ブランド名を含む検索語）。相関の相手はサイトのプロパティで見る
+  const brandProps = scSite.length ? scSite : scIg;
+  const brandTerms = state.settings.brandTerms?.length
+    ? state.settings.brandTerms
+    : guessBrandTerms(brandProps, defaultBrandTerms(scAll, accounts.map((a) => a.name).filter(Boolean)));
+  const branded = brandedQueries(brandProps, brandTerms);
+  search.brand = { terms: brandTerms, ...(branded || {}) };
+
   // GA4（HPへの流入）。期間フィルタは投稿側と揃える
-  const traffic = computeTraffic(ds, { startKey, endKey, daily, posts: all, accounts, account, searchProps: search.scoped });
+  const traffic = computeTraffic(ds, {
+    startKey, endKey, daily, posts: all, accounts, account,
+    searchProps: brandProps, brandedShare: branded?.share ?? null,
+  });
+
+  // 投稿と行動の相関（どちらも Instagram のデータなので期間のズレは起きない）
+  const actionWeeks = joinActions(weeklyInstagram(cur.posts, cur.daily));
+  const actionTargets = availableActionTargets(actionWeeks);
+  const actionTarget = actionTargets.some((t) => t.key === state.settings.actionTarget)
+    ? state.settings.actionTarget
+    : actionTargets[0]?.key || 'keepActions';
+  const actions = {
+    weeks: actionWeeks,
+    targets: actionTargets,
+    target: actionTarget,
+    table: actionWeeks.length >= 3 ? correlationTable(actionWeeks, { target: actionTarget, drivers: ACTION_DRIVERS }) : [],
+  };
   // 上部の指標：Instagram から HP への流入（UU・セッション・新規・エンゲージメント率・CV・CVR）。前期間も同じ長さで比べる
   const hp = hpSummary(ds.ga4, startKey, endKey);
   const prevHp = days ? hpSummary(ds.ga4, addDays(startKey, -days), addDays(startKey, -1)) : null;
@@ -268,7 +296,7 @@ function compute() {
     types, heatmap, hours, weekdays, hashtags, insights,
     steps, audience, accounts, accountStats, account, followerMode, traffic, hp, prevHp, nonFollowerEstimated, si,
     all, postHistory, historyIdx: historyIndex(postHistory), historyStatus: historyStatus(postHistory), search,
-    formats: ds.contentFormats || null, kpi,
+    formats: ds.contentFormats || null, kpi, actions,
   };
 }
 
@@ -276,13 +304,13 @@ function compute() {
  * GA4 の流入を週単位で投稿データと突き合わせる。
  * 相関は週数がある程度ないと意味を持たないので、3週未満なら null を返して画面ごと隠す。
  */
-function computeTraffic(ds, { startKey, endKey, daily, posts, accounts, account, searchProps = [] }) {
+function computeTraffic(ds, { startKey, endKey, daily, posts, accounts, account, searchProps = [], brandedShare = null }) {
   // GA4 は週次で入ってくることがある。期間の端で週を切らないよう、週単位に丸めて絞り込む
   const from = weekStart(startKey);
   const to = addDays(weekStart(endKey), 6);
   const all = (ds.ga4 || []).filter((r) => r.date >= from && r.date <= to);
   // Search Console の日次も同じ週の範囲でそろえる（GA4 が無くても相関を出せるようにする）
-  const scWeeks = weeklySearch(sliceSearchDaily(searchProps, from, to));
+  const scWeeks = weeklySearch(sliceSearchDaily(searchProps, from, to), { brandedShare });
   if (!all.length && !scWeeks.length) return null;
   // 参照元別とキャンペーン別が両方あると二重計上になるので、集計には粗いほうだけを使う
   const rows = primaryRows(all);
@@ -725,7 +753,7 @@ function renderKpi(v) {
     );
   }
 
-  // --- 4段階のファネル ---
+  // --- 5段階のファネル ---
   $('#kpi-funnel').replaceChildren(
     ...v.kpi.funnel.map((s) =>
       el('li', {},
@@ -743,6 +771,10 @@ function renderKpi(v) {
   );
 
   renderKpiTable(rows);
+  renderActionCorrelation(v);
+  // 「投稿と流入の相関」は KPI ブロックへ移したので、GA4 の有無に関わらずここで描く
+  $('#correlation-card').hidden = !v.traffic;
+  if (v.traffic) renderCorrelation(v);
 }
 
 const monthlyOf = (rows, key) => rows.find((r) => r.key === key)?.monthly ?? null;
@@ -1338,7 +1370,6 @@ function renderTraffic(v) {
       `GA4 側 ${t.gaOnlyWeeks.length}週、うち投稿データと突き合わせできたのは ${weeks}週です。`
     : `GA4 を取り込んでいないため、Search Console の週次データと投稿を突き合わせています（検索側 ${t.scWeeks.length}週、うち突き合わせできたのは ${weeks}週）。`;
   if (!t.hasGA4) {
-    renderCorrelation(v);
     $('#campaign-card').hidden = true;
     $('#landing-card').hidden = true;
     return;
@@ -1366,8 +1397,6 @@ function renderTraffic(v) {
   $('#traffic-summary').replaceChildren(
     ...stats.flatMap(([k, val]) => [el('dt', { textContent: k }), el('dd', { textContent: val })]),
   );
-
-  renderCorrelation(v);
 
   // アカウント別
   const accRows = b.accounts.filter((a) => a.name).slice(0, 8).map((a) => ({
@@ -1428,40 +1457,26 @@ function renderTraffic(v) {
   }
 }
 
-/** 相関表と散布図 */
-function renderCorrelation(v) {
-  const t = v.traffic;
-  const targetSel = $('#corr-target');
-  // 取り込んでいるデータ（GA4 / Search Console）で選べる相手だけを出す
-  const targetSig = t.targets.map((x) => x.key).join('|');
+/** 相関表の共通描画。「投稿と行動」「投稿と流入」で同じ見た目にする */
+function renderCorrTable({ ids, table, weeks, target, targets, label, note, cols = 9 }) {
+  const targetSel = $(ids.target);
+  const targetSig = targets.map((x) => x.key).join('|');
   if (targetSel.dataset.sig !== targetSig) {
     targetSel.dataset.sig = targetSig;
-    targetSel.replaceChildren(...t.targets.map((x) => el('option', { value: x.key, textContent: `${x.label} との相関` })));
+    targetSel.replaceChildren(...targets.map((x) => el('option', { value: x.key, textContent: `${x.label} との相関` })));
   }
-  targetSel.value = t.target;
+  targetSel.value = target;
+  $(ids.sub).textContent = `週ごとの「投稿側の指標」と「${label}」の関係。n=${weeks}週`;
 
-  const driverSel = $('#scatter-driver');
-  const usable = t.table.map((x) => x.key);
-  const sig = usable.join('|');
-  if (driverSel.dataset.sig !== sig) {
-    driverSel.dataset.sig = sig;
-    driverSel.replaceChildren(...DRIVERS.filter((d) => usable.includes(d.key)).map((d) => el('option', { value: d.key, textContent: d.label })));
-  }
-  if (usable.includes(t.driverKey)) driverSel.value = t.driverKey;
-
-  const tbody = $('#corr-table tbody');
-  const label = TARGETS.find((x) => x.key === t.target)?.label ?? '';
-  $('#corr-sub').textContent = `週ごとの「投稿側の指標」と「${label}」の関係。n=${t.joined.length}週`;
-
-  if (!t.table.length) {
-    tbody.replaceChildren(el('tr', {}, el('td', { colSpan: 9, textContent: '相関を出すには、投稿データと GA4 が重なる週が3週以上必要です。' })));
-    $('#corr-note').textContent = '';
-    setEmpty('c-scatter', true, 'データが足りません');
-    return;
+  const tbody = $(`${ids.table} tbody`);
+  if (!table.length) {
+    tbody.replaceChildren(el('tr', {}, el('td', { colSpan: cols, textContent: ids.empty })));
+    $(ids.note).textContent = '';
+    return false;
   }
 
   const num = (x, digits = 2) => (x === null || x === undefined || Number.isNaN(x) ? '–' : (x >= 0 ? '+' : '−') + Math.abs(x).toFixed(digits));
-  const sorted = [...t.table].sort((a, b) => Math.abs(b.r) - Math.abs(a.r));
+  const sorted = [...table].sort((a, b) => Math.abs(b.r) - Math.abs(a.r));
   tbody.replaceChildren(
     ...sorted.map((c) => {
       const tr = document.createElement('tr');
@@ -1482,16 +1497,84 @@ function renderCorrelation(v) {
       tr.insertCell().textContent = readCorrelation(c);
       const est = tr.insertCell();
       est.className = 'num';
-      est.textContent = describeEstimate(c, t.target);
+      est.textContent = describeEstimate(c, target);
       return tr;
     }),
   );
-  $('#corr-note').textContent =
-    'r は −1〜+1 の相関の強さ。p 値が 0.05 未満なら「偶然とは考えにくい」目安です。' +
-    '「時期の影響を除いた r」は週の順番を差し引いた値、「増減どうしの r」は前の週からの変化どうしの相関で、' +
-    'どちらも元の r より大きく下がる場合は、両方が同時期に伸びただけの見かけの相関を疑ってください。' +
-      '「推定値」は週ごとの値から引いた回帰直線の傾きで、投稿側の指標が増えたときに増える流入（獲得数）の目安です。有意でない指標は（参考）としています。相関は因果ではありません。';
+  $(ids.note).textContent = note;
+  return true;
+}
 
+const CORR_NOTE =
+  'r は −1〜+1 の相関の強さ。p 値が 0.05 未満なら「偶然とは考えにくい」目安です。' +
+  '「時期の影響を除いた r」は週の順番を差し引いた値、「増減どうしの r」は前の週からの変化どうしの相関で、' +
+  'どちらも元の r より大きく下がる場合は、両方が同時期に伸びただけの見かけの相関を疑ってください。' +
+  '相関は因果ではありません。';
+
+/** 投稿と行動（保存・プロフィールアクセス・フォロー）の相関 */
+function renderActionCorrelation(v) {
+  const a = v.actions;
+  const card = $('#action-correlation-card');
+  card.hidden = !a.targets.length;
+  if (card.hidden) return;
+  renderCorrTable({
+    ids: {
+      target: '#action-corr-target', sub: '#action-corr-sub', table: '#action-corr-table', note: '#action-corr-note',
+      empty: '相関を出すには、投稿データが3週以上必要です。',
+    },
+    table: a.table,
+    weeks: a.weeks.length,
+    target: a.target,
+    targets: a.targets,
+    label: ACTION_TARGETS.find((x) => x.key === a.target)?.label ?? '',
+    note: `${CORR_NOTE}「推定値」は、投稿側の指標が増えたときに行動がどれだけ増えるかの目安です。`,
+  });
+}
+
+/** 相関表と散布図（投稿と HP への流入） */
+function renderCorrelation(v) {
+  const t = v.traffic;
+  const label = TARGETS.find((x) => x.key === t.target)?.label ?? '';
+  const ok = renderCorrTable({
+    ids: {
+      target: '#corr-target', sub: '#corr-sub', table: '#corr-table', note: '#corr-note',
+      empty: '相関を出すには、投稿データと GA4（または Search Console）が重なる週が3週以上必要です。',
+    },
+    table: t.table,
+    weeks: t.joined.length,
+    target: t.target,
+    targets: t.targets,
+    label,
+    note: `${CORR_NOTE}「推定値」は週ごとの値から引いた回帰直線の傾きで、投稿側の指標が増えたときに増える流入（獲得数）の目安です。有意でない指標は（参考）としています。`,
+  });
+
+  // 指名キーワードを選んでいるときだけ、語の設定を出す
+  const brandRow = $('#brand-terms-row');
+  brandRow.hidden = t.target !== 'brandedClicks';
+  if (!brandRow.hidden) {
+    const b = v.search.brand || {};
+    const input = $('#brand-terms');
+    if (document.activeElement !== input) input.value = (b.terms || []).join(', ');
+    $('#brand-terms-note').textContent = b.matched
+      ? `「${(b.terms || []).join('・')}」を含む検索語 ${b.matched}件・${fmtInt(b.clicks)}クリック（全体の ${fmtPct((b.share ?? 0) * 100, 1)}）。日次はこの割合で按分した推定値です。`
+      : '当てはまる検索語がありません。実際に検索されている語に合わせて書き換えてください。';
+  }
+
+  if (!ok) {
+    setEmpty('c-scatter', true, 'データが足りません');
+    return;
+  }
+
+  const driverSel = $('#scatter-driver');
+  const usable = t.table.map((x) => x.key);
+  const sig = usable.join('|');
+  if (driverSel.dataset.sig !== sig) {
+    driverSel.dataset.sig = sig;
+    driverSel.replaceChildren(...DRIVERS.filter((d) => usable.includes(d.key)).map((d) => el('option', { value: d.key, textContent: d.label })));
+  }
+  if (usable.includes(t.driverKey)) driverSel.value = t.driverKey;
+
+  const num = (x, digits = 2) => (x === null || x === undefined || Number.isNaN(x) ? '–' : (x >= 0 ? '+' : '−') + Math.abs(x).toFixed(digits));
   if (t.scatter && !setEmpty('c-scatter', t.scatter.points.length < 3)) {
     const d = DRIVERS.find((x) => x.key === t.driverKey);
     charts.scatter('c-scatter', t.scatter.points, t.scatter.fit, { xLabel: d?.label ?? '', yLabel: label });
@@ -2425,6 +2508,17 @@ function bindEvents() {
     download(`search_console_queries_${state.view.search.scope}.csv`, toCSV(rows, cols), 'text/csv');
   });
 
+  $('#action-corr-target').addEventListener('change', (e) => {
+    state.settings.actionTarget = e.target.value;
+    persistSettings();
+    render();
+  });
+  $('#brand-terms').addEventListener('change', (e) => {
+    // 空にすると自動推測に戻る
+    state.settings.brandTerms = e.target.value.split(/[,、]/).map((x) => x.trim()).filter(Boolean);
+    persistSettings();
+    render();
+  });
   $('#corr-target').addEventListener('change', (e) => {
     state.settings.corrTarget = e.target.value;
     persistSettings();

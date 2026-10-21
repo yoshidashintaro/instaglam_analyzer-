@@ -57,7 +57,7 @@ export function weeklyInstagram(posts, daily) {
   const blank = (w) => ({
     week: w, posts: 0, reach: 0, views: 0, interactions: 0, saves: 0, shares: 0,
     postFollows: 0, reels: 0, carousels: 0, byAccount: {},
-    accountReach: null, accountViews: null, accountNonFollowerReach: null, profileVisits: null, linkClicks: null,
+    accountReach: null, accountViews: null, accountNonFollowerReach: null, profileVisits: null, linkClicks: null, accountFollows: null,
   });
   for (const p of posts) {
     const w = weekStart(p.dateKey ?? p.timestamp.slice(0, 10));
@@ -91,6 +91,7 @@ export function weeklyInstagram(posts, daily) {
     add('accountNonFollowerReach', d.nonFollowerReach);
     add('profileVisits', d.profileVisits);
     add('linkClicks', d.linkClicks);
+    add('accountFollows', d.follows);
     weeks.set(w, g);
   }
   return [...weeks.values()].sort((a, b) => a.week.localeCompare(b.week));
@@ -122,20 +123,65 @@ export const DRIVERS = [
   { key: 'profileVisits', label: 'プロフィールアクセス', step: 100, unit: 'アクセス' },
 ];
 
+/**
+ * 「投稿と行動の相関」で使う投稿側の指標。
+ * 行動側（保存・プロフィールアクセス・フォロー）と同じ数字を入れると
+ * 自分自身との相関になってしまうので、投稿量と届いた量だけに絞る。
+ */
+export const ACTION_DRIVERS = [
+  { key: 'posts', label: '投稿数', step: 1, unit: '件' },
+  { key: 'reels', label: 'リール本数', step: 1, unit: '本' },
+  { key: 'carousels', label: 'カルーセル本数', step: 1, unit: '本' },
+  { key: 'reach', label: '投稿リーチ合計', step: 1000, unit: 'リーチ' },
+  { key: 'views', label: '投稿ビュー合計', step: 1000, unit: 'ビュー' },
+  { key: 'accountNonFollowerReach', label: 'フォロワー以外へのリーチ', step: 1000, unit: 'リーチ' },
+];
+
+/** 「投稿と行動の相関」の相手（Instagram 内で起きた行動） */
+export const ACTION_TARGETS = [
+  { key: 'keepActions', label: '保存数＋シェア数', unit: '件' },
+  { key: 'profileVisits', label: 'プロフィールアクセス', unit: 'アクセス' },
+  { key: 'newFollows', label: '新規フォロー', unit: 'フォロー' },
+];
+
+/**
+ * 投稿側と行動側を同じ週データから組み立てる。
+ * どちらも Instagram のデータなので期間のズレは起きない。
+ * 期間の端は週の一部しかないことがあるため、GA4 との突き合わせと同じように落とす。
+ */
+export function joinActions(igWeeks = [], { dropPartial = true } = {}) {
+  let rows = igWeeks.map((w) => ({
+    week: w.week,
+    ig: w,
+    ga: {
+      // 保存とシェアは「残す（興味）」の行動としてまとめて見る
+      keepActions: w.saves === null && w.shares === null ? null : (w.saves ?? 0) + (w.shares ?? 0),
+      profileVisits: w.profileVisits,
+      // アカウント全体の新規フォロー。日次が無ければ投稿由来のフォローで代用する
+      newFollows: w.accountFollows ?? (w.postFollows || null),
+    },
+  }));
+  if (dropPartial && rows.length >= 3) rows = rows.slice(1, -1);
+  return rows;
+}
+
+/** その週データで実際に選べる行動側の指標だけを返す */
+export function availableActionTargets(rows = []) {
+  return ACTION_TARGETS.filter((t) => rows.some((r) => r.ga[t.key] !== null && r.ga[t.key] !== undefined && r.ga[t.key] !== 0));
+}
+
 /** 相関の相手（HP 側の指標）。source は必要なデータ源 */
 export const TARGETS = [
-  { key: 'organic', label: 'HPへの流入（オーガニック）', unit: 'セッション', source: 'ga4' },
-  { key: 'sessions', label: 'HPへの流入（広告込み）', unit: 'セッション', source: 'ga4' },
-  { key: 'organicTaps', label: '予約タップ', unit: '予約タップ', source: 'ga4' },
-  { key: 'searchImpressions', label: 'Google 検索での表示回数', unit: '表示', source: 'sc' },
-  { key: 'searchClicks', label: 'Google 検索からのクリック', unit: 'クリック', source: 'sc' },
+  { key: 'organic', label: 'HPへの流入（Instagram）', unit: 'セッション', source: 'ga4', def: '広告を除く Instagram 経由のセッション' },
+  // 指名検索は、Search Console の日次クリックを「指名の割合」で按分した推定値
+  { key: 'brandedClicks', label: 'HPへの流入（指名キーワード）', unit: 'クリック', source: 'sc', estimated: true, def: 'ブランド名を含む検索語からのクリック（日次は指名の割合で按分した推定値）' },
 ];
 
 /**
  * Search Console の日次を週単位にまとめ、相関の相手として使える形にする。
  * 掲載順位は足せないので、表示回数で重み付けした平均にする。
  */
-export function weeklySearch(scDaily = []) {
+export function weeklySearch(scDaily = [], { brandedShare = null } = {}) {
   const weeks = new Map();
   for (const r of scDaily) {
     if (!r?.date) continue;
@@ -153,6 +199,8 @@ export function weeklySearch(scDaily = []) {
       searchClicks: r.searchClicks,
       searchImpressions: r.searchImpressions,
       searchPosition: r.searchImpressions && r._w ? r._w / r.searchImpressions : null,
+      // 指名キーワードぶん（期間全体の割合で按分した推定値）
+      brandedClicks: brandedShare === null ? null : Math.round(r.searchClicks * brandedShare),
       searchDays: r.days,
     }))
     .sort((a, b) => a.week.localeCompare(b.week));
@@ -182,11 +230,11 @@ export function availableTargets(weeks = []) {
  * 週番号を制御した偏相関と、前週差分の相関も一緒に出して、
  * 「どちらも右肩上がりなだけ」の見かけの相関を見分けられるようにする。
  */
-export function correlationTable(joined, { target = 'organic' } = {}) {
+export function correlationTable(joined, { target = 'organic', drivers = DRIVERS } = {}) {
   if (joined.length < 3) return [];
   const trend = joined.map((_, i) => i);
   const y = joined.map((r) => r.ga[target] ?? 0);
-  return DRIVERS.map((d) => {
+  return drivers.map((d) => {
     const x = joined.map((r) => r.ig[d.key] ?? 0);
     const usable = x.some((v) => v !== 0);
     // 推定値：回帰直線の傾き × 単位（投稿 +1件で流入が何セッション増えるか）
@@ -197,10 +245,10 @@ export function correlationTable(joined, { target = 'organic' } = {}) {
 }
 
 /** 今週の投稿が翌週の流入に効いているか */
-export function laggedCorrelation(joined, { target = 'organic', lag = 1 } = {}) {
+export function laggedCorrelation(joined, { target = 'organic', lag = 1, drivers = DRIVERS } = {}) {
   if (joined.length < lag + 3) return [];
   const y = joined.map((r) => r.ga[target] ?? 0).slice(lag);
-  return DRIVERS.map((d) => {
+  return drivers.map((d) => {
     const x = joined.map((r) => r.ig[d.key] ?? 0).slice(0, -lag);
     if (!x.some((v) => v !== 0)) return null;
     return { ...d, lag, ...correlate(x, y) };

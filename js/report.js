@@ -2,7 +2,7 @@
 // 出力形式に依存しない「見出し・段落・箇条書き・表」の並びを作り、Markdown と Word はそこから組み立てる。
 // DOM にも Chart.js にも依存しない（Node のテストからも読み込む）。
 import { WEEKDAYS, TYPE_LABELS, METRICS, DAILY_FIELDS, DAILY_LABELS, weeklyER, topPosts, bestSlots, parseDateKey, formatJST } from './analytics.js';
-import { DRIVERS, TARGETS, describeEstimate } from './traffic.js';
+import { DRIVERS, TARGETS, ACTION_TARGETS, describeEstimate } from './traffic.js';
 
 const fmtInt = (v) => (v === null || v === undefined || !Number.isFinite(v) ? '–' : Math.round(v).toLocaleString('ja-JP'));
 const fmtPct = (v, d = 2) => (v === null || v === undefined || !Number.isFinite(v) ? '–' : `${v.toFixed(d)}%`);
@@ -161,6 +161,21 @@ export function buildReport(v, { dataset = {}, settings = {}, warnings = [], gen
         ['l', 'l', 'r', 'r', 'l'],
       );
     }
+  }
+
+  // ---------- 投稿と行動の相関 ----------
+  const act = v.actions;
+  if (act?.table?.length) {
+    const actLabel = ACTION_TARGETS.find((x) => x.key === act.target)?.label ?? '';
+    h(2, `投稿と行動の相関（相手: ${actLabel}・n=${act.weeks.length}週）`);
+    p('投稿した量と、Instagram の中で起きた行動（保存・プロフィールアクセス・フォロー）の関係です。どちらも Instagram のデータなので、期間のズレは起きません。');
+    table(
+      ['投稿側の指標', '相関 r', '順位相関 ρ', 'p 値', '95% 信頼区間', '時期の影響を除いた r', '増減どうしの r', '見かた', '推定値'],
+      [...act.table]
+        .sort((a, b2) => Math.abs(b2.r) - Math.abs(a.r))
+        .map((c) => [c.label, fmtSigned(c.r), fmtSigned(c.rho), c.p === null ? '–' : c.p.toFixed(3), c.ci ? `${fmtSigned(c.ci[0])} 〜 ${fmtSigned(c.ci[1])}` : '–', fmtSigned(c.partial), fmtSigned(c.deltaR), readCorrelation(c), describeEstimate(c, act.target)]),
+      ['l', 'r', 'r', 'r', 'r', 'r', 'r', 'l', 'r'],
+    );
   }
 
   h(2, '自動分析レポート');

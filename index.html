@@ -218,6 +218,69 @@
           </div>
           <p class="help small" id="kpi-note"></p>
         </article>
+
+        <article class="card" id="action-correlation-card">
+          <header>
+            <div><h3>投稿と行動の相関</h3><p class="sub" id="action-corr-sub"></p></div>
+            <label class="select compact">
+              <span class="sr-only">相関の相手</span>
+              <select id="action-corr-target"></select>
+            </label>
+          </header>
+          <div class="table-wrap">
+            <table class="data-table" id="action-corr-table">
+              <thead>
+                <tr>
+                  <th>投稿側の指標</th>
+                  <th class="num">相関 r</th>
+                  <th class="num">順位相関 ρ</th>
+                  <th class="num">p 値</th>
+                  <th class="num">95% 信頼区間</th>
+                  <th class="num">時期の影響を除いた r</th>
+                  <th class="num">増減どうしの r</th>
+                  <th>見かた</th>
+                  <th class="num">推定値</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <p class="note-line" id="action-corr-note"></p>
+        </article>
+
+        <article class="card" id="correlation-card">
+          <header>
+            <div><h3>投稿と流入の相関</h3><p class="sub" id="corr-sub"></p></div>
+            <label class="select compact">
+              <span class="sr-only">相関の相手</span>
+              <select id="corr-target"></select>
+            </label>
+          </header>
+          <div class="table-wrap">
+            <table class="data-table" id="corr-table">
+              <thead>
+                <tr>
+                  <th>投稿側の指標</th>
+                  <th class="num">相関 r</th>
+                  <th class="num">順位相関 ρ</th>
+                  <th class="num">p 値</th>
+                  <th class="num">95% 信頼区間</th>
+                  <th class="num">時期の影響を除いた r</th>
+                  <th class="num">増減どうしの r</th>
+                  <th>見かた</th>
+                  <th class="num">推定値（獲得数）</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <p class="note-line" id="corr-note"></p>
+          <label class="check brand-terms" id="brand-terms-row" hidden>
+            <span>指名キーワードの語（カンマ区切り）</span>
+            <input type="text" id="brand-terms" placeholder="ミセルクリニック, misel" />
+            <span class="sub" id="brand-terms-note"></span>
+          </label>
+        </article>
       </section>
 
       <!-- フォロワー -->
@@ -526,34 +589,6 @@
           </article>
         </div>
 
-        <article class="card" id="correlation-card">
-          <header>
-            <div><h3>投稿と流入の相関</h3><p class="sub" id="corr-sub"></p></div>
-            <label class="select compact">
-              <span class="sr-only">相関の相手</span>
-              <select id="corr-target"></select>
-            </label>
-          </header>
-          <div class="table-wrap">
-            <table class="data-table" id="corr-table">
-              <thead>
-                <tr>
-                  <th>投稿側の指標</th>
-                  <th class="num">相関 r</th>
-                  <th class="num">順位相関 ρ</th>
-                  <th class="num">p 値</th>
-                  <th class="num">95% 信頼区間</th>
-                  <th class="num">時期の影響を除いた r</th>
-                  <th class="num">増減どうしの r</th>
-                  <th>見かた</th>
-                  <th class="num">推定値（獲得数）</th>
-                </tr>
-              </thead>
-              <tbody></tbody>
-            </table>
-          </div>
-          <p class="note-line" id="corr-note"></p>
-        </article>
 
         <div class="grid-2">
           <article class="card" data-chart="c-scatter">
@@ -724,7 +759,7 @@
 
   <footer class="foot">
     データとアクセストークンはこのブラウザ内（localStorage）にのみ保存され、Instagram Graph API 以外へは送信されません。
-    <span class="build">版: <span id="build-stamp">2026/10/20 19:49</span></span>
+    <span class="build">版: <span id="build-stamp">2026/10/21 13:58</span></span>
   </footer>
 
   <!-- データ接続ダイアログ -->
