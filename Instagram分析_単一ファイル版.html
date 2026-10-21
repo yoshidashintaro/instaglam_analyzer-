@@ -477,6 +477,12 @@ dialog.dlg-wide { width: min(860px, calc(100vw - 32px)); overflow: auto; }
 .brand-terms input { flex: 1; min-width: 200px; max-width: 420px; padding: 4px 8px; font: inherit; font-size: 12px; }
 .brand-terms .sub { flex-basis: 100%; margin: 0; }
 
+/* KGI が複数あるとき */
+.kgi-item + .kgi-item { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--grid); }
+.kgi-name { margin: 0; font-size: 13px; font-weight: 600; color: var(--text-secondary); text-align: center; }
+.kgi-item .kgi-box { padding-top: 2px; }
+.kgi-item .kgi-value { font-size: 28px; }
+
 </style>
   <script>
     // テーマの初期適用（ちらつき防止）
@@ -682,7 +688,7 @@ dialog.dlg-wide { width: min(860px, calc(100vw - 32px)); overflow: auto; }
             <ol class="stage-funnel" id="kpi-funnel"></ol>
           </article>
           <article class="card" id="kpi-kgi-card">
-            <header><div><h3>KGI</h3><p class="sub">興味関心層の獲得数（保存数＋フォロワー純増）</p></div></header>
+            <header><div><h3>KGI</h3><p class="sub">最終目標。月あたりに換算した実績です</p></div></header>
             <div id="kpi-kgi"></div>
           </article>
         </div>
@@ -1241,7 +1247,7 @@ dialog.dlg-wide { width: min(860px, calc(100vw - 32px)); overflow: auto; }
 
   <footer class="foot">
     データとアクセストークンはこのブラウザ内（localStorage）にのみ保存され、Instagram Graph API 以外へは送信されません。
-    <span class="build">版: <span id="build-stamp">2026/10/21 15:04</span></span>
+    <span class="build">版: <span id="build-stamp">2026/10/21 15:14</span></span>
   </footer>
 
   <!-- データ接続ダイアログ -->
@@ -4692,6 +4698,7 @@ __mod["js/traffic.js"] = (function () {
 
   /** 「投稿と行動の相関」の相手（Instagram 内で起きた行動） */
   const ACTION_TARGETS = [
+    { key: 'accountNonFollowerReach', label: '非フォロワーへのリーチ', unit: 'リーチ' },
     { key: 'keepActions', label: '保存数＋シェア数', unit: '件' },
     { key: 'profileVisits', label: 'プロフィールアクセス', unit: 'アクセス' },
     { key: 'newFollows', label: '新規フォロー', unit: 'フォロー' },
@@ -4710,6 +4717,8 @@ __mod["js/traffic.js"] = (function () {
         // 保存とシェアは「残す（興味）」の行動としてまとめて見る
         keepActions: w.saves === null && w.shares === null ? null : (w.saves ?? 0) + (w.shares ?? 0),
         profileVisits: w.profileVisits,
+        // 投稿が「フォロワー以外」にどれだけ届いたか
+        accountNonFollowerReach: w.accountNonFollowerReach,
         // アカウント全体の新規フォロー。日次が無ければ投稿由来のフォローで代用する
         newFollows: w.accountFollows ?? (w.postFollows || null),
       },
@@ -4813,7 +4822,8 @@ __mod["js/traffic.js"] = (function () {
     if (joined.length < 3) return [];
     const trend = joined.map((_, i) => i);
     const y = joined.map((r) => r.ga[target] ?? 0);
-    return drivers.map((d) => {
+    // 相手と同じ指標は投稿側から外す（自分自身との相関になってしまうため）
+    return drivers.filter((d) => d.key !== target).map((d) => {
       const x = joined.map((r) => r.ig[d.key] ?? 0);
       const usable = x.some((v) => v !== 0);
       // 推定値：回帰直線の傾き × 単位（投稿 +1件で流入が何セッション増えるか）
@@ -4827,7 +4837,7 @@ __mod["js/traffic.js"] = (function () {
   function laggedCorrelation(joined, { target = 'organic', lag = 1, drivers = DRIVERS } = {}) {
     if (joined.length < lag + 3) return [];
     const y = joined.map((r) => r.ga[target] ?? 0).slice(lag);
-    return drivers.map((d) => {
+    return drivers.filter((d) => d.key !== target).map((d) => {
       const x = joined.map((r) => r.ig[d.key] ?? 0).slice(0, -lag);
       if (!x.some((v) => v !== 0)) return null;
       return { ...d, lag, ...correlate(x, y) };
@@ -6813,6 +6823,12 @@ __mod["js/kpi.js"] = (function () {
       note: '保存とフォロワー純増は「興味を持った人が取った行動」なので、足して1本の目標にしています。',
     },
     {
+      key: 'hpReferrals', stage: 'kgi', kind: 'monthly', unit: '',
+      label: 'インスタからHPへの誘導数', def: '広告を除く Instagram 経由のセッション',
+      baseline: 710, target: 900, source: 'GA4（UTM別）',
+      note: 'Instagram を見た人が、実際にホームページまで来た数です。',
+    },
+    {
       key: 'saves', stage: 'keep', kind: 'monthly', unit: '',
       label: '保存数', def: '全投稿の保存の合計',
       baseline: 122, target: 250, source: 'インサイト',
@@ -6902,9 +6918,14 @@ __mod["js/kpi.js"] = (function () {
       nonFollowerReach: num(si?.totals?.nonFollowerReach) ?? num(totals.nonFollowerReach),
       followRate: ratio(follows, profileVisits),
       organicSessions: num(traffic?.breakdown?.totals?.organic),
+      // KGI：インスタからHPへの誘導数（オーガニックHP流入と同じ数字を、最終目標として見る）
+      hpReferrals: num(traffic?.breakdown?.totals?.organic),
       organicTapRate: num(traffic?.breakdown?.organicTapRate),
       // 取り込んだデータの中身を画面で確かめられるようにする注記
       notes: {
+        hpReferrals: (traffic?.properties || []).length
+          ? `GA4 プロパティ: ${traffic.properties.join('・')}${traffic.properties.length > 1 ? ' の合計' : ''}`
+          : null,
         organicSessions: (traffic?.properties || []).length
           ? `GA4 プロパティ: ${traffic.properties.join('・')}${traffic.properties.length > 1 ? ' の合計' : ''}`
           : null,
@@ -6916,6 +6937,7 @@ __mod["js/kpi.js"] = (function () {
         netFollowers: daysWith(daily, 'netChange', 'follows'),
         // GA4 は週単位で突き合わせているので、週数×7 を日数とみなす
         organicSessions: traffic?.breakdown?.weeks ? traffic.breakdown.weeks * 7 : null,
+        hpReferrals: traffic?.breakdown?.weeks ? traffic.breakdown.weeks * 7 : null,
       },
     };
   }
@@ -9485,22 +9507,32 @@ __mod["js/app.js"] = (function () {
       `運用で決めた指標の定義・基準・目標に対する進捗です。期間の合計を「月あたり」に直して比べています` +
       `（いまの期間は ${days}日間 → ${DAYS_PER_MONTH.toFixed(1)}日ぶんに換算）。率の指標は換算しません。`;
 
-    // --- KGI ---
-    const kgi = rows.find((r) => r.stage === 'kgi');
+    // --- KGI（複数ある） ---
+    const kgis = rows.filter((r) => r.stage === 'kgi');
     const box = $('#kpi-kgi');
-    if (!kgi || kgi.monthly === null) {
-      box.replaceChildren(el('p', { className: 'sub', textContent: '保存数とフォロワー純増のデータが必要です' }));
+    const usable = kgis.filter((k) => k.monthly !== null);
+    if (!usable.length) {
+      box.replaceChildren(el('p', { className: 'sub', textContent: 'KGI を出すためのデータ（保存・フォロワー純増・GA4 の流入）がまだありません' }));
     } else {
       box.replaceChildren(
-        el('div', { className: 'kgi-box' },
-          el('div', { className: 'kgi-value' }, fmtKpi(kgi, kgi.monthly), el('span', { className: 'kgi-unit', textContent: '／月' })),
-          el('p', {
-            className: 'kgi-sub',
-            textContent: `基準 ${fmtKpi(kgi, kgi.baseline)} ・ 目標 ${fmtKpi(kgi, kgi.target)}${kgi.progress === null ? '' : `（達成率 ${Math.round(kgi.progress)}%）`}`,
-          }),
-          el('p', { className: 'kgi-sub', textContent: `内訳：保存 ${fmtKpi(kgi, monthlyOf(rows, 'saves'))} ＋ 純増 ${fmtKpi(kgi, monthlyOf(rows, 'netFollowers'))}` }),
+        ...kgis.map((k) =>
+          el('div', { className: 'kgi-item' },
+            el('p', { className: 'kgi-name', textContent: k.label }),
+            k.monthly === null
+              ? el('p', { className: 'sub', textContent: `${k.source} のデータがありません` })
+              : el('div', { className: 'kgi-box' },
+                  el('div', { className: 'kgi-value' }, fmtKpi(k, k.monthly), el('span', { className: 'kgi-unit', textContent: '／月' })),
+                  el('p', {
+                    className: 'kgi-sub',
+                    textContent: `基準 ${fmtKpi(k, k.baseline)} ・ 目標 ${fmtKpi(k, k.target)}${k.progress === null ? '' : `（達成率 ${Math.round(k.progress)}%）`}`,
+                  }),
+                  k.key === 'interestGain'
+                    ? el('p', { className: 'kgi-sub', textContent: `内訳：保存 ${fmtKpi(k, monthlyOf(rows, 'saves'))} ＋ 純増 ${fmtKpi(k, monthlyOf(rows, 'netFollowers'))}` })
+                    : el('p', { className: 'kgi-sub', textContent: k.def }),
+                ),
+            k.monthly === null ? null : goalBar(k),
+          ),
         ),
-        goalBar(kgi),
       );
     }
 
