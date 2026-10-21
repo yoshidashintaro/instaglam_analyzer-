@@ -1247,7 +1247,7 @@ dialog.dlg-wide { width: min(860px, calc(100vw - 32px)); overflow: auto; }
 
   <footer class="foot">
     データとアクセストークンはこのブラウザ内（localStorage）にのみ保存され、Instagram Graph API 以外へは送信されません。
-    <span class="build">版: <span id="build-stamp">2026/10/21 15:14</span></span>
+    <span class="build">版: <span id="build-stamp">2026/10/21 17:47</span></span>
   </footer>
 
   <!-- データ接続ダイアログ -->
@@ -10241,7 +10241,7 @@ __mod["js/app.js"] = (function () {
   }
 
   /** 相関表の共通描画。「投稿と行動」「投稿と流入」で同じ見た目にする */
-  function renderCorrTable({ ids, table, weeks, target, targets, label, note, cols = 9 }) {
+  function renderCorrTable({ ids, table, weeks, target, targets, label, note, hint = '', cols = 9 }) {
     const targetSel = $(ids.target);
     const targetSig = targets.map((x) => x.key).join('|');
     if (targetSel.dataset.sig !== targetSig) {
@@ -10254,7 +10254,8 @@ __mod["js/app.js"] = (function () {
     const tbody = $(`${ids.table} tbody`);
     if (!table.length) {
       tbody.replaceChildren(el('tr', {}, el('td', { colSpan: cols, textContent: ids.empty })));
-      $(ids.note).textContent = '';
+      // 表が出せないときこそ「なぜ選べないか」が必要なので、注記は残す
+      $(ids.note).textContent = hint;
       return false;
     }
 
@@ -10284,7 +10285,7 @@ __mod["js/app.js"] = (function () {
         return tr;
       }),
     );
-    $(ids.note).textContent = note;
+    $(ids.note).textContent = note + hint;
     return true;
   }
 
@@ -10292,14 +10293,20 @@ __mod["js/app.js"] = (function () {
    * 選べない相手があるときに、なぜ出ないかを伝える。
    * GA4 を Instagram だけに絞って書き出していると、自然検索・検索広告は入ってこない。
    */
+  const TARGET_HINTS = {
+    organic: 'GA4（Instagram からの流入）',
+    sessions: 'GA4（Instagram からの流入）',
+    searchOrganic: 'GA4 のチャネル別の書き出し（Organic Search）',
+    searchAds: 'GA4 のチャネル別の書き出し（Paid Search）',
+    organicTaps: 'GA4（予約タップのイベント）',
+    searchImpressions: 'Search Console の書き出し',
+    brandedClicks: 'Search Console の書き出し（サイトのプロパティ）',
+  };
+
   function missingTargetNote(t) {
-    if (!t.hasGA4) return '';
-    const missing = TARGETS.filter((x) => ['searchOrganic', 'searchAds'].includes(x.key) && !t.targets.some((y) => y.key === x.key));
+    const missing = TARGETS.filter((x) => !t.targets.some((y) => y.key === x.key));
     if (!missing.length) return '';
-    return (
-      `　※「${missing.map((m) => m.label).join('」「')}」は、取り込んだ GA4 に Instagram 以外の参照元/メディアが入っていないため選べません。` +
-      'GA4 で参照元/メディアを絞らずに書き出すと使えるようになります。'
-    );
+    return `　※ ${missing.map((m) => `「${m.label}」`).join('')}はデータが無いため選べません（必要なデータ：${[...new Set(missing.map((m) => TARGET_HINTS[m.key]))].join('／')}）。`;
   }
 
   const CORR_NOTE =
@@ -10308,12 +10315,35 @@ __mod["js/app.js"] = (function () {
     'どちらも元の r より大きく下がる場合は、両方が同時期に伸びただけの見かけの相関を疑ってください。' +
     '相関は因果ではありません。';
 
+  /**
+   * 行動側で選べない相手があるときに、何を取り込めば使えるかを伝える。
+   * 黙って選択肢から消えると「実装されていない」ように見えてしまうため。
+   */
+  const ACTION_TARGET_HINTS = {
+    accountNonFollowerReach: 'リーチ内訳の書き出し（非フォロワー比率の1行サマリー）。日次の実数が無くても、比率から推定して使えます',
+    keepActions: '投稿データ（保存・シェア）',
+    profileVisits: '日次のプロフィールアクセス（Visits.csv など）',
+    newFollows: '日次のフォロー（Follows.csv など）',
+  };
+
+  function missingActionNote(a) {
+    const missing = ACTION_TARGETS.filter((t) => !a.targets.some((x) => x.key === t.key));
+    if (!missing.length) return '';
+    return `　※ ${missing.map((m) => `「${m.label}」`).join('')}はデータが無いため選べません（必要なデータ：${missing.map((m) => ACTION_TARGET_HINTS[m.key]).join('／')}）。`;
+  }
+
   /** 投稿と行動（保存・プロフィールアクセス・フォロー）の相関 */
   function renderActionCorrelation(v) {
     const a = v.actions;
     const card = $('#action-correlation-card');
     card.hidden = !a.targets.length;
     if (card.hidden) return;
+    // 非フォロワーへのリーチは、実数が無ければリーチ内訳の比率から推定している。
+    // 他のグラフと同じように（推定）と付けて、実測と区別できるようにする
+    const estimated = v.nonFollowerEstimated;
+    const withMark = (t) =>
+      estimated && t.key === 'accountNonFollowerReach' ? { ...t, label: `${t.label}（推定）` } : t;
+
     renderCorrTable({
       ids: {
         target: '#action-corr-target', sub: '#action-corr-sub', table: '#action-corr-table', note: '#action-corr-note',
@@ -10322,9 +10352,10 @@ __mod["js/app.js"] = (function () {
       table: a.table,
       weeks: a.weeks.length,
       target: a.target,
-      targets: a.targets,
-      label: ACTION_TARGETS.find((x) => x.key === a.target)?.label ?? '',
+      targets: a.targets.map(withMark),
+      label: withMark(ACTION_TARGETS.find((x) => x.key === a.target) ?? {}).label ?? '',
       note: `${CORR_NOTE}「推定値」は、投稿側の指標が増えたときに行動がどれだけ増えるかの目安です。`,
+      hint: missingActionNote(a),
     });
   }
 
@@ -10342,7 +10373,8 @@ __mod["js/app.js"] = (function () {
       target: t.target,
       targets: t.targets,
       label,
-      note: `${CORR_NOTE}「推定値」は週ごとの値から引いた回帰直線の傾きで、投稿側の指標が増えたときに増える流入（獲得数）の目安です。有意でない指標は（参考）としています。${missingTargetNote(t)}`,
+      note: `${CORR_NOTE}「推定値」は週ごとの値から引いた回帰直線の傾きで、投稿側の指標が増えたときに増える流入（獲得数）の目安です。有意でない指標は（参考）としています。`,
+      hint: missingTargetNote(t),
     });
 
     // 指名キーワードを選んでいるときだけ、語の設定を出す
