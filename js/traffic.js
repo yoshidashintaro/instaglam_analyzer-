@@ -323,14 +323,17 @@ export function landingRate(joined, { account = '' } = {}) {
 /**
  * 認知（フォロワー以外へのリーチ）に対する HP 流入の通過率。
  * GA4 と Instagram は書き出しの期間が違うことが多いため、両方そろっている週だけで出す。
+ * includePaid: 広告からの流入も足す（リーチも広告込みなので、分子・分母がそろう）
  */
-export function reachToSiteRate(joined, { account = '' } = {}) {
+export function reachToSiteRate(joined, { account = '', includePaid = false } = {}) {
   const rows = joined.filter((r) => (r.ig.accountNonFollowerReach ?? 0) > 0 && r.ga.byAccount);
   if (!rows.length) return null;
   const reach = rows.reduce((s, r) => s + r.ig.accountNonFollowerReach, 0);
-  const sessions = rows.reduce((s, r) => s + (account ? r.ga.byAccount[account] || 0 : r.ga.organic), 0);
+  const organic = rows.reduce((s, r) => s + (account ? r.ga.byAccount[account] || 0 : r.ga.organic), 0);
+  const paid = includePaid ? rows.reduce((s, r) => s + (r.ga.paid || 0), 0) : 0;
+  const sessions = organic + paid;
   const clicks = rows.reduce((s, r) => s + (r.ig.linkClicks ?? 0), 0);
-  return { weeks: rows.length, reach, sessions, clicks, rate: reach ? (sessions / reach) * 100 : null };
+  return { weeks: rows.length, reach, sessions, organic, paid, clicks, rate: reach ? (sessions / reach) * 100 : null };
 }
 
 /**

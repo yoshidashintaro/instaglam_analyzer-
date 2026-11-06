@@ -24,7 +24,7 @@ import { TREND_METRICS, TREND_UNITS, trendMetric, trendSeries } from './trend.js
 import { sliceStories, summarizeStories, storiesByDate, storiesByHour } from './stories.js';
 import {
   sliceByDate, surfaceBreakdown, clickBreakdown, accountTotals,
-  hashtagSets, benchmarkSummary, taggedInPeriod,
+  hashtagSets, benchmarkSummary, taggedInPeriod, accountResolver, pickAccountDaily,
 } from './account.js';
 import { readReachBreakdown, mergeReachBreakdown, applyNonFollowerEstimate, describeBreakdowns, breakdownFor, soleAccount } from './data/reachMix.js';
 import {
@@ -142,26 +142,32 @@ function toggleTheme() {
 /** 日次・投稿を分析できる形に整える（ダッシュボードと推移ページで共通） */
 function baseData() {
   const ds = state.dataset;
-  // フォロワー総数の日次データが無くても、オーディエンスの現在値から推移を逆算する
-  const rawDaily = normalizeDaily(anchorFollowers(ds.daily || [], ds.audience));
-  const current = ds.audience?.followersTotal ?? ds.account?.followersCount ?? rawDaily.findLast((d) => d.followers !== null)?.followers;
-  const enriched = enrichPosts((ds.posts || []).map(normalizePost), rawDaily, state.settings.basis, current);
-
+  const normalized = (ds.posts || []).map(normalizePost);
   // 1つのエクスポートに複数アカウントが入っていることがあるので絞り込めるようにする
-  const accounts = accountsOf(enriched);
-  // 非フォロワーへのリーチの実数が無い投稿・日は、取り込んだリーチ内訳の比率から推定する
+  const accounts = accountsOf(normalized);
+  const account = accounts.some((a) => a.username === state.settings.account) ? state.settings.account : '';
   // 日次データ（アカウント全体の数字）の持ち主。投稿に別アカウントが混ざっていても、
   // リーチ内訳が1アカウントぶんだけならそれを優先する（取り違えると推定が走らない）
   const mainAccount = ds.account?.username || soleAccount(ds.reachBreakdown) || accounts[0]?.username || '';
+  // 日次データは、絞り込んだアカウント（すべてのときは本アカウント）のぶんだけ使う。
+  // 複数アカウントのソーシャルインサイトを取り込んでも、フォロワー数などが混ざらないようにする
+  const resolve = accountResolver({ posts: normalized, accountDaily: ds.accountDaily, stories: ds.stories });
+  const dailyOwner = account || mainAccount;
+  const picked = pickAccountDaily(ds.daily || [], { resolve, account: dailyOwner });
+  // フォロワー総数の日次データが無くても、オーディエンスの現在値から推移を逆算する
+  const rawDaily = normalizeDaily(anchorFollowers(picked.rows, ds.audience));
+  const current = ds.audience?.followersTotal ?? ds.account?.followersCount ?? rawDaily.findLast((d) => d.followers !== null)?.followers;
+  const enriched = enrichPosts(normalized, rawDaily, state.settings.basis, current);
+
+  // 非フォロワーへのリーチの実数が無い投稿・日は、取り込んだリーチ内訳の比率から推定する
   const est = applyNonFollowerEstimate({ posts: enriched, daily: rawDaily }, ds.reachBreakdown, mainAccount);
   const daily = est.daily;
-  const account = accounts.some((a) => a.username === state.settings.account) ? state.settings.account : '';
   // Search Console の投稿データを、投稿 URL の shortcode で突き合わせる
   const searchProps = instagramProperties(ds.searchConsole || [], account);
   const searchIdx = searchPostIndex(searchProps);
   const all = searchIdx.size ? est.posts.map((p) => withSearchMetrics(p, searchIdx)) : est.posts;
   const posts = account ? all.filter((p) => p.account === account) : all;
-  return { ds, daily, all, accounts, account, posts, nonFollowerEstimated: est.estimated, searchProps, searchIdx, mainAccount };
+  return { ds, daily, all, accounts, account, posts, nonFollowerEstimated: est.estimated, searchProps, searchIdx, mainAccount, dailyOwner, dailyPick: picked, resolve };
 }
 
 /** 投稿に Google 検索での表示回数・クリック・掲載順位を付ける（データが無ければ null） */
@@ -182,7 +188,7 @@ function postHistoryRows() {
 
 function compute() {
   const { days } = state.settings;
-  const { ds, daily, all, accounts, account, posts, nonFollowerEstimated, mainAccount } = baseData();
+  const { ds, daily, all, accounts, account, posts, nonFollowerEstimated, mainAccount, dailyOwner, dailyPick, resolve } = baseData();
   const followerMode = ds.followerMode || detectFollowerMode(daily);
 
   const { startKey, endKey } = periodBounds(daily, posts, days || null);
@@ -253,8 +259,11 @@ function compute() {
   const prevHp = days ? hpSummary(ds.ga4, addDays(startKey, -days), addDays(startKey, -1)) : null;
 
   // ソーシャルインサイトから取り込んだ追加データ（ストーリーズ・面別の内訳・他アカウント）
-  const stories = sliceStories(ds.stories, startKey, endKey);
-  const accountRows = sliceByDate(ds.accountDaily, startKey, endKey);
+  // ストーリーズ・日次インサイトも、日次データと同じアカウントのぶんだけ（別アカウントの数字を足さない）
+  const ownStories = (ds.stories || []).filter((x) => !x.account || !dailyOwner || x.account === dailyOwner);
+  const stories = sliceStories(ownStories, startKey, endKey);
+  const ownAccountDaily = (ds.accountDaily || []).filter((r) => !r.account || (dailyPick.label ? r.account === dailyPick.label : !resolve(r.account) || resolve(r.account) === dailyOwner));
+  const accountRows = sliceByDate(ownAccountDaily, startKey, endKey);
   const si = {
     stories,
     storiesSummary: summarizeStories(stories),
@@ -296,7 +305,7 @@ function compute() {
     types, heatmap, hours, weekdays, hashtags, insights,
     steps, audience, accounts, accountStats, account, followerMode, traffic, hp, prevHp, nonFollowerEstimated, si,
     all, postHistory, historyIdx: historyIndex(postHistory), historyStatus: historyStatus(postHistory), search,
-    formats: ds.contentFormats || null, kpi, actions,
+    formats: ds.contentFormats || null, kpi, actions, dailyOwner, dailyPick,
   };
 }
 
@@ -335,8 +344,8 @@ function computeTraffic(ds, { startKey, endKey, daily, posts, accounts, account,
   const lagged = joined.length >= 4 ? laggedCorrelation(joined, { target }) : [];
   // リンククリックは本アカウントの数字なので、比べる相手もそのアカウント由来に絞る
   const landing = landingRate(joined, { account: account || fallbackAccount });
-  // ファネル5段階目：認知（フォロワー以外へのリーチ）に対する HP 流入の通過率
-  const bridge = reachToSiteRate(joined, { account: account || fallbackAccount });
+  // ファネル5段階目：認知（フォロワー以外へのリーチ・広告込み）に対する、インスタから HP への誘導数（広告含む）の通過率
+  const bridge = reachToSiteRate(joined, { account: account || fallbackAccount, includePaid: true });
   const insights = trafficInsights({ table, lagged, breakdown, landing, joined });
 
   // UTM キャンペーン別（どの投稿・施策からの流入か）
@@ -454,8 +463,18 @@ function warningMessages(v) {
   if (v.nonFollowerEstimated) {
     msgs.push(`非フォロワーへのリーチは、取り込んだリーチ内訳の比率を投稿・日ごとのリーチに掛けた推定値です（${describeBreakdowns(state.dataset.reachBreakdown).join('、')}）。内訳の期間外の日は、いちばん近い期間の比率を使っています。`);
   }
+  const pick = v.dailyPick;
   if (v.account) {
-    msgs.push(`投稿の分析を @${v.account} に絞り込んでいます。アカウント全体の日次指標（リーチ・プロフィールアクセスなど）は絞り込みの対象外です。`);
+    msgs.push(
+      pick?.label
+        ? `@${v.account} に絞り込んでいます。日次指標（フォロワー数・リーチ・プロフィールアクセスなど）も @${v.account} のソーシャルインサイト（${pick.label}）の数字です。`
+        : `投稿の分析を @${v.account} に絞り込んでいます。このアカウントの日次データ（ソーシャルインサイト）が無いため、日次指標は Meta の書き出しなどアカウントを区別しないデータの数字です。`,
+    );
+  } else if (pick?.others?.length) {
+    msgs.push(`日次指標（フォロワー数・リーチなど）は @${v.dailyOwner}${pick.label ? `（${pick.label}）` : ''} の数字です。ほかのアカウント（${pick.others.join('・')}）の日次は、上の「アカウント」で切り替えると表示します。`);
+  }
+  if (pick?.unresolved?.length) {
+    msgs.push(`どのアカウントのものか判別できない日次データ（${pick.unresolved.join('・')}）は使っていません。同じアカウントの「instagram_insights-posts」（投稿インサイト）も取り込むと判別できます。`);
   }
   return msgs;
 }
@@ -719,7 +738,7 @@ function setEmpty(canvasId, empty, msg = 'この期間のデータがありま�
 // ---------- KPI ツリー ----------
 
 const KPI_STATUS_LABELS = { reached: '目標達成', onTrack: '基準以上', behind: '基準割れ', none: 'データなし' };
-const KPI_STAGE_LABELS = { kgi: 'KGI', see: '見る（認知）', keep: '残す（興味）', connect: 'つながる（関係化）', bridge: 'HPへ（橋渡し）' };
+const KPI_STAGE_LABELS = { kgi: 'KGI', see: '見る（認知）', keep: '残す（興味）', deepen: '深める（関心）', connect: 'つながる（関係化）', bridge: 'HPへ（橋渡し）' };
 
 /** KPI の値の表示（率は % 、それ以外は整数＋単位） */
 const fmtKpi = (row, value) => {
@@ -2191,7 +2210,8 @@ async function handleCSVFiles(files) {
         // 書き出しの期間末をその数字の「時点」として履歴に積む（過去分をまとめて取り込んでも順番が狂わない）
         if (si.posts.length) postHistory = mergeHistory(postHistory, snapshotPosts(si.posts, snapshotDate(si)));
         if (si.posts.length) posts = store.mergePosts(posts, si.posts);
-        if (si.daily.length) daily = store.mergeDaily(daily, si.daily);
+        // 日次はファイルのラベル（アカウント）を付けて持つ。複数アカウントを取り込んでも日付で混ざらない
+        if (si.daily.length) daily = store.mergeDaily(daily, si.label ? si.daily.map((r) => ({ ...r, account: si.label })) : si.daily);
         if (si.summary.length) accountDaily = mergeSummary(accountDaily, si.summary);
         if (si.stories.length) stories = mergeStories(stories, si.stories);
         if (si.tagged.length) tagged = mergeTagged(tagged, si.tagged);
@@ -2281,7 +2301,11 @@ async function handleCSVFiles(files) {
     return;
   }
 
-  const normalized = normalizeDaily(anchorFollowers(daily, audience));
+  // フォロワー数・増減の取り方の判定は、本アカウントの日次だけで行う（別アカウントの行を混ぜない）
+  const mainPosts = posts.map(normalizePost);
+  const mainUser = (merge ? state.dataset.account?.username : '') || accountsOf(mainPosts)[0]?.username || '';
+  const ownDaily = pickAccountDaily(daily, { resolve: accountResolver({ posts: mainPosts, accountDaily, stories }), account: mainUser }).rows;
+  const normalized = normalizeDaily(anchorFollowers(ownDaily, audience));
   const lastF = audience?.followersTotal ?? normalized.findLast((d) => d.followers !== null)?.followers ?? null;
   setDataset(
     {
@@ -2394,11 +2418,14 @@ async function handleFindIG() {
 function exportReport(format) {
   if (!state.view) return toast('出力するデータがありません');
   const generatedAt = new Date();
+  // 指標の推移は、推移ページと同じく期間で絞らないデータで出す
+  const { ds, daily, posts } = baseData();
   const report = buildReport(state.view, {
     dataset: state.dataset,
     settings: state.settings,
     warnings: warningMessages(state.view),
     generatedAt,
+    trend: { daily, posts, ga4: ds.ga4 || [] },
   });
   if (format === 'docx') download(`${report.fileBase}.docx`, toDocx(report, generatedAt), DOCX_MIME);
   else download(`${report.fileBase}.md`, toMarkdown(report), 'text/markdown;charset=utf-8');

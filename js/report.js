@@ -3,6 +3,8 @@
 // DOM にも Chart.js にも依存しない（Node のテストからも読み込む）。
 import { WEEKDAYS, TYPE_LABELS, METRICS, DAILY_FIELDS, DAILY_LABELS, weeklyER, topPosts, bestSlots, parseDateKey, formatJST } from './analytics.js';
 import { DRIVERS, TARGETS, ACTION_TARGETS, describeEstimate } from './traffic.js';
+import { TREND_METRICS, trendSeries } from './trend.js';
+import { HISTORY_METRICS, postTimeline } from './postHistory.js';
 
 const fmtInt = (v) => (v === null || v === undefined || !Number.isFinite(v) ? '–' : Math.round(v).toLocaleString('ja-JP'));
 const fmtPct = (v, d = 2) => (v === null || v === undefined || !Number.isFinite(v) ? '–' : `${v.toFixed(d)}%`);
@@ -34,16 +36,17 @@ export function readCorrelation(c) {
 }
 
 const LEVELS = { good: '好調', warn: '要注意', info: '参考' };
-const STAGE_LABELS = { kgi: 'KGI', see: '見る（認知）', keep: '残す（興味）', connect: 'つながる（関係化）', bridge: 'HPへ（橋渡し）' };
+const STAGE_LABELS = { kgi: 'KGI', see: '見る（認知）', keep: '残す（興味）', deepen: '深める（関心）', connect: 'つながる（関係化）', bridge: 'HPへ（橋渡し）' };
 const SOURCES = { demo: 'デモデータ', csv: 'CSV 取り込み', api: 'Instagram API' };
 
 /**
  * レポートの中身を組み立てる。
  * @param v        compute() の戻り値
- * @param ctx      { dataset, settings, warnings, generatedAt }
+ * @param ctx      { dataset, settings, warnings, generatedAt, trend }
+ *                 trend: 指標の推移に使う期間で絞らないデータ { daily, posts, ga4 }（省略時は表示中の期間のデータ）
  * @returns        { title, fileBase, blocks: [{type:'h',level,text} | {type:'p',text} | {type:'list',items} | {type:'table',head,rows,align}] }
  */
-export function buildReport(v, { dataset = {}, settings = {}, warnings = [], generatedAt = new Date() } = {}) {
+export function buildReport(v, { dataset = {}, settings = {}, warnings = [], generatedAt = new Date(), trend = null } = {}) {
   const blocks = [];
   const h = (level, text) => blocks.push({ type: 'h', level, text });
   const p = (text) => text && blocks.push({ type: 'p', text });
@@ -145,12 +148,13 @@ export function buildReport(v, { dataset = {}, settings = {}, warnings = [], gen
       ]),
       ['l', 'l', 'l', 'r', 'r', 'r', 'r', 'l'],
     );
+    list(tree.rows.filter((r) => r.note || r.dataNote).map((r) => `${r.label}：${[r.note, r.dataNote].filter(Boolean).join(' ')}`));
 
     if (tree.funnel?.length) {
       h(3, '見る → 残す → 深める → つながる → HPへ');
-      p('投稿を見た人がたどる4段階です。各段階の代表の数字と、1つ前の段階からの通過率を出しています。');
+      p('投稿を見た人がたどる5段階です。各段階の代表の数字と、何に対する割合かを出しています。5段階目（HPへ）は、Instagram から HP への誘導数（広告を含むセッション）です。');
       table(
-        ['段階', '指標', '実績', '1つ前からの通過率', '補足'],
+        ['段階', '指標', '実績', '何に対する割合か', '補足'],
         tree.funnel.map((s2) => [
           s2.label,
           s2.metric,
@@ -331,18 +335,56 @@ export function buildReport(v, { dataset = {}, settings = {}, warnings = [], gen
     const hasViews = v.posts.some((x) => x.views !== null);
     const hasNonF = v.posts.some((x) => x.nonFollowerReach !== null && x.nonFollowerReach !== undefined);
     const hasFollows = v.posts.some((x) => x.follows !== null);
+    const has = (k) => v.posts.some((x) => x[k] !== null && x[k] !== undefined);
+    const hasVisits = has('profileVisits');
+    const hasWatch = has('avgWatchSec');
+    const hasSearch = has('searchImpressions');
     const multi = !v.account && v.accounts.length > 1;
-    const head = ['投稿日時', ...(multi ? ['アカウント'] : []), 'タイプ', '内容', ...(hasViews ? ['ビュー'] : []), 'リーチ', ...(hasNonF ? [v.posts.some((x) => x.nonFollowerEstimated) ? '非フォロワー（≈は推定）' : '非フォロワー'] : []), 'いいね', 'コメント', '保存', 'シェア', ...(hasFollows ? ['フォロー'] : []), '反応計', 'ER', 'URL'];
+    const head = ['投稿日時', ...(multi ? ['アカウント'] : []), 'タイプ', '内容', ...(hasViews ? ['ビュー'] : []), 'リーチ', ...(hasNonF ? [v.posts.some((x) => x.nonFollowerEstimated) ? '非フォロワー（≈は推定）' : '非フォロワー'] : []), 'いいね', 'コメント', '保存', 'シェア', ...(hasFollows ? ['フォロー'] : []), ...(hasVisits ? ['プロフ遷移'] : []), ...(hasWatch ? ['平均再生（秒）'] : []), '反応計', ...(hasSearch ? ['検索表示', '検索クリック', '検索順位'] : []), 'ER', 'URL'];
     const sorted = [...v.posts].sort((a, b) => b.timestamp.localeCompare(a.timestamp));
     table(
       head,
       sorted.map((x) => [
         fmtDateTime(x.timestamp), ...(multi ? [x.account ? `@${x.account}` : '–'] : []), TYPE_LABELS[x.type], oneLine(x.caption, 60),
         ...(hasViews ? [fmtInt(x.views)] : []), fmtInt(x.reach), ...(hasNonF ? [x.nonFollowerEstimated ? `≈${fmtInt(x.nonFollowerReach)}` : fmtInt(x.nonFollowerReach)] : []), fmtInt(x.likes), fmtInt(x.comments), fmtInt(x.saves), fmtInt(x.shares),
-        ...(hasFollows ? [fmtInt(x.follows)] : []), fmtInt(x.interactions), fmtPct(x.er), x.permalink || '–',
+        ...(hasFollows ? [fmtInt(x.follows)] : []), ...(hasVisits ? [fmtInt(x.profileVisits)] : []), ...(hasWatch ? [fmtNum(x.avgWatchSec)] : []),
+        fmtInt(x.interactions),
+        ...(hasSearch ? [fmtInt(x.searchImpressions), fmtInt(x.searchClicks), x.searchPosition === null || x.searchPosition === undefined ? '–' : `${x.searchPosition.toFixed(1)}位`] : []),
+        fmtPct(x.er), x.permalink || '–',
       ]),
       head.map((c) => (['投稿日時', 'アカウント', 'タイプ', '内容', 'URL'].includes(c) ? 'l' : 'r')),
     );
+  }
+
+  // ---------- 投稿後の伸び（日次で取り込んだ記録） ----------
+  const hs = v.historyStatus;
+  if (hs?.days >= 2) {
+    const grown = v.posts
+      .map((x) => ({ post: x, line: postTimeline(v.postHistory || [], x) }))
+      .filter((x) => x.line.length >= 2)
+      .sort((a, b) => b.post.timestamp.localeCompare(a.post.timestamp));
+    if (grown.length) {
+      const metrics = HISTORY_METRICS.filter((m) => m.key !== 'interactions' && grown.some((x) => x.line.some((r) => r[m.key] !== null)));
+      // 最初に記録した値から最後の値までの増加（その指標が記録されている点どうしで比べる）
+      const gain = (line, key) => {
+        const pts = line.filter((r) => r[key] !== null);
+        return pts.length >= 2 ? pts.at(-1)[key] - pts[0][key] : null;
+      };
+      h(3, `投稿後の伸び（${grown.length}件）`);
+      p(`取り込みのたびに残している投稿ごとの記録（${fmtDate(hs.first)} 〜 ${fmtDate(hs.last)}・${hs.days}回分）から、最初の記録から最後の記録までに増えた数です。投稿後に何日伸び続けたかを見る目安になります。`);
+      table(
+        ['投稿日時', 'タイプ', '内容', '記録', '記録の期間', ...metrics.map((m) => `${m.label}の増加`)],
+        grown.slice(0, 60).map(({ post: x, line }) => [
+          fmtDateTime(x.timestamp), TYPE_LABELS[x.type], oneLine(x.caption, 30), `${line.length}回`,
+          `${fmtDate(line[0].date)}〜${fmtDate(line.at(-1).date)}${line.at(-1).day === null ? '' : `（投稿${line.at(-1).day}日後まで）`}`,
+          ...metrics.map((m) => {
+            const g = gain(line, m.key);
+            return g === null ? '–' : `${g >= 0 ? '+' : '−'}${fmtInt(Math.abs(g))}`;
+          }),
+        ]),
+        ['l', 'l', 'l', 'r', 'l', ...metrics.map(() => 'r')],
+      );
+    }
   }
 
   // ---------- 投稿時間帯 ----------
@@ -551,6 +593,26 @@ export function buildReport(v, { dataset = {}, settings = {}, warnings = [], gen
           ? `リンククリックの ${(100 - land.rate).toFixed(0)}% は GA4 で計測できていません。プロフィールのリンク先が LINE や外部予約システムなど計測対象外になっているか、UTM が付いていない可能性があります。`
           : 'Instagram 上のクリック数と GA4 の流入は概ね一致しています。',
       );
+    }
+  }
+
+  // ---------- 指標の推移（月別） ----------
+  // 上部の指標カードから開ける「推移」ページと同じ集計。期間で絞らず、取り込んだデータ全体を月ごとに並べる
+  const src = trend || { daily: v.daily, posts: v.posts, ga4: dataset.ga4 || [] };
+  const series = TREND_METRICS.map((m) => trendSeries(m.key, src, 'month')).filter((x) => x?.rows.some((r) => r.value !== null));
+  if (series.length) {
+    const fmtTrend = (m, val) => (val === null || val === undefined ? '–' : m.unit === '%' ? fmtPct(val) : m.agg === 'mean' ? fmtNum(val) : fmtInt(val));
+    h(2, '指標の推移（月別）');
+    p('上部の指標を月ごとに並べたものです（画面では指標をクリックすると推移を表示します）。表示中の期間に関係なく、取り込んだデータ全体を集計しています。直近24か月まで。');
+    for (const group of [...new Set(series.map((x) => x.metric.group))]) {
+      const list2 = series.filter((x) => x.metric.group === group);
+      const months = [...new Set(list2.flatMap((x) => x.rows.map((r) => r.key)))].sort().slice(-24);
+      h(3, group);
+      table(
+        ['月', ...list2.map((x) => x.metric.label)],
+        months.map((k) => [k.slice(0, 7).replace('-', '/'), ...list2.map((x) => fmtTrend(x.metric, x.rows.find((r) => r.key === k)?.value ?? null))]),
+      );
+      list(list2.map((x) => `${x.metric.label}：${x.metric.def}`));
     }
   }
 

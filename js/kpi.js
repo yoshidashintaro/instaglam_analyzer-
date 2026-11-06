@@ -15,7 +15,7 @@ export const KPI_STAGES = [
   { key: 'keep', label: '2. 残す（興味）', note: '保存・シェア。興味関心層になった証拠で、ここが最重要' },
   { key: 'deepen', label: '3. 深める（関心）', note: 'もっと知りたくなってプロフィールを見に行く' },
   { key: 'connect', label: '4. つながる（関係化）', note: 'プロフィール訪問 → フォロー' },
-  { key: 'bridge', label: '5. HPへ（検討への橋渡し）', note: 'プロフィールのリンクから HP・LINE へ。ここから先は LINE・広告・HP が担う' },
+  { key: 'bridge', label: '5. HPへ（検討への橋渡し）', note: 'Instagram（投稿・プロフィール・広告）から HP へ。ここから先は LINE・HP が担う' },
 ];
 
 /**
@@ -68,9 +68,10 @@ export const KPI_DEFS = [
     baseline: 75, target: 150, source: 'インサイト',
   },
   {
-    key: 'organicSessions', stage: 'bridge', kind: 'monthly', unit: '',
-    label: 'オーガニックHP流入', def: '広告を除く Instagram 経由のセッション',
+    key: 'hpSessions', stage: 'bridge', kind: 'monthly', unit: '',
+    label: 'インスタからHPへの誘導数（広告含む）', def: 'Instagram 経由のセッション（オーガニック＋広告）',
     baseline: 710, target: 900, source: 'GA4（UTM別）', targetNote: '+25%',
+    note: '広告からの流入も含めた、Instagram から HP へ来た数です。基準・目標は広告を含む数で設定し直してください。',
   },
   {
     key: 'organicTapRate', stage: 'bridge', kind: 'rate', unit: '%', digits: 1,
@@ -125,7 +126,7 @@ export function kpiValues({ summary, posts = [], daily = [], traffic = null, si 
     reels: posts.length ? byType('REELS').length : null,
     nonFollowerReach: num(si?.totals?.nonFollowerReach) ?? num(totals.nonFollowerReach),
     followRate: ratio(follows, profileVisits),
-    organicSessions: num(traffic?.breakdown?.totals?.organic),
+    hpSessions: num(traffic?.breakdown?.totals?.sessions),
     // KGI：インスタからHPへの誘導数（オーガニックHP流入と同じ数字を、最終目標として見る）
     hpReferrals: num(traffic?.breakdown?.totals?.organic),
     organicTapRate: num(traffic?.breakdown?.organicTapRate),
@@ -134,7 +135,7 @@ export function kpiValues({ summary, posts = [], daily = [], traffic = null, si 
       hpReferrals: (traffic?.properties || []).length
         ? `GA4 プロパティ: ${traffic.properties.join('・')}${traffic.properties.length > 1 ? ' の合計' : ''}`
         : null,
-      organicSessions: (traffic?.properties || []).length
+      hpSessions: (traffic?.properties || []).length
         ? `GA4 プロパティ: ${traffic.properties.join('・')}${traffic.properties.length > 1 ? ' の合計' : ''}`
         : null,
     },
@@ -144,7 +145,7 @@ export function kpiValues({ summary, posts = [], daily = [], traffic = null, si 
       nonFollowerReach: daysWith(daily, 'nonFollowerReach'),
       netFollowers: daysWith(daily, 'netChange', 'follows'),
       // GA4 は週単位で突き合わせているので、週数×7 を日数とみなす
-      organicSessions: traffic?.breakdown?.weeks ? traffic.breakdown.weeks * 7 : null,
+      hpSessions: traffic?.breakdown?.weeks ? traffic.breakdown.weeks * 7 : null,
       hpReferrals: traffic?.breakdown?.weeks ? traffic.breakdown.weeks * 7 : null,
     },
   };
@@ -238,7 +239,10 @@ export function stageFunnel({ summary, posts = [], traffic = null, si = null, re
   const profileVisits = num(si?.totals?.profileVisits) ?? num(totals.profileVisits);
   const follows = num(si?.totals?.follows) ?? num(totals.follows);
   const linkClicks = num(totals.linkClicks);
-  const sessions = num(traffic?.breakdown?.totals?.organic);
+  // 5段階目は Instagram から HP への誘導数（広告を含む）。内訳としてオーガニック・広告も添える
+  const sessions = num(traffic?.breakdown?.totals?.sessions);
+  const organic = num(traffic?.breakdown?.totals?.organic);
+  const paid = num(traffic?.breakdown?.totals?.paid);
 
   // 面別の内訳があれば、広告を除いたリーチ・閲覧も出す
   const surfaces = si?.surfaces || [];
@@ -280,7 +284,7 @@ export function stageFunnel({ summary, posts = [], traffic = null, si = null, re
       from: profileVisits, fromLabel: 'プロフィールアクセス',
       note: profileVisits ? `プロフィールアクセス ${Math.round(profileVisits).toLocaleString('ja-JP')}件` : '',
     },
-    bridgeStep({ landing, bridge, sessions, linkClicks, profileVisits, nonFollowerReach, properties }),
+    bridgeStep({ landing, bridge, sessions, organic, paid, linkClicks, profileVisits, nonFollowerReach, properties }),
   ];
 
   return steps.map((s) => ({
@@ -297,10 +301,12 @@ export function stageFunnel({ summary, posts = [], traffic = null, si = null, re
  * 「リンククリックより流入が多い」という、ありえない比率になる。
  * そこで両方のデータがそろっている週だけで比べる（landing）。
  */
-function bridgeStep({ landing, bridge, sessions, linkClicks, profileVisits, nonFollowerReach, properties = [] }) {
+function bridgeStep({ landing, bridge, sessions, organic = null, paid = null, linkClicks, profileVisits, nonFollowerReach, properties = [] }) {
   const n = (v) => Math.round(v).toLocaleString('ja-JP');
   const propNote = properties.length > 1 ? `　対象プロパティ: ${properties.join('・')} の合計` : '';
   const label = '5. HPへ（橋渡し）';
+  const metric = 'インスタからHPへの誘導数（広告含む・セッション）';
+  const mix = (o, p) => (o === null && p === null ? '' : `うちオーガニック ${n(o ?? 0)}・広告 ${n(p ?? 0)}。`);
 
   // GA4 が無い：プロフィールアクセス → リンククリック を見る
   if (sessions === null) {
@@ -316,9 +322,10 @@ function bridgeStep({ landing, bridge, sessions, linkClicks, profileVisits, nonF
   if (!bridge || !bridge.reach) {
     return {
       key: 'bridge', label, value: sessions, unit: '',
-      metric: 'オーガニックHP流入（セッション）',
+      metric,
       from: null, fromLabel: 'フォロワー以外へのリーチ（広告込み）', rate: null,
       note:
+        mix(organic, paid) +
         'GA4 とリーチのデータで期間が重なっていないため、通過率は出せません。' +
         `${nonFollowerReach === null ? 'フォロワー以外へのリーチのデータがありません。' : `フォロワー以外へのリーチ ${n(nonFollowerReach)}（期間が違います）。`}` +
         '同じ期間で書き出し直すと比べられます。' + propNote,
@@ -328,12 +335,14 @@ function bridgeStep({ landing, bridge, sessions, linkClicks, profileVisits, nonF
   // 認知（フォロワー以外へのリーチ）に対する割合。両方そろう週だけで比べる
   return {
     key: 'bridge', label, value: bridge.sessions, unit: '',
-    metric: 'オーガニックHP流入（セッション）',
+    metric,
     from: bridge.reach, fromLabel: 'フォロワー以外へのリーチ（広告込み）', rate: bridge.rate,
     note:
       `GA4 とリーチの両方がそろう ${bridge.weeks}週で比較（フォロワー以外へのリーチ ${n(bridge.reach)} → ${n(bridge.sessions)}セッション）。` +
-      (bridge.clicks ? `同じ期間のリンククリックは ${n(bridge.clicks)}回（到達率 ${((bridge.sessions / bridge.clicks) * 100).toFixed(1)}%）。` : '') +
-      (sessions !== bridge.sessions ? `期間全体のオーガニック流入は ${n(sessions)}セッションです。` : '') +
+      mix(bridge.organic ?? null, bridge.paid ?? null) +
+      // リンククリックはプロフィールのリンク（オーガニック）なので、到達率はオーガニック分で出す
+      (bridge.clicks ? `同じ期間のリンククリックは ${n(bridge.clicks)}回（オーガニック流入の到達率 ${(((bridge.organic ?? bridge.sessions) / bridge.clicks) * 100).toFixed(1)}%）。` : '') +
+      (sessions !== bridge.sessions ? `期間全体の誘導数は ${n(sessions)}セッション（${mix(organic, paid).replace(/。$/, '')}）です。` : '') +
       propNote,
   };
 }

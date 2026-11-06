@@ -35,14 +35,18 @@ export const saveSettings = (s) => write(KEY_SETTINGS, s);
  * 指標ごとに別ファイルで届く Meta のエクスポートを1本の時系列にまとめるためにも使う。
  */
 export function mergeDaily(oldRows = [], newRows = []) {
-  const map = new Map(oldRows.map((r) => [r.date, { ...emptyDailyRow(r.date), ...r }]));
+  // アカウントのラベルが付いた行（ソーシャルインサイト）は、アカウントごとに分けて持つ。
+  // 日付だけで重ねると、別アカウントの数字で上書きされてしまう
+  const key = (r) => `${r.account || ''}|${r.date}`;
+  const map = new Map(oldRows.map((r) => [key(r), { ...emptyDailyRow(r.date), ...r }]));
   for (const r of newRows) {
-    const prev = map.get(r.date) || emptyDailyRow(r.date);
+    const prev = map.get(key(r)) || emptyDailyRow(r.date);
     const merged = { date: r.date };
+    if (r.account) merged.account = r.account;
     for (const k of DAILY_FIELDS) merged[k] = r[k] ?? prev[k] ?? null;
-    map.set(r.date, merged);
+    map.set(key(r), merged);
   }
-  return [...map.values()].sort((a, b) => a.date.localeCompare(b.date));
+  return [...map.values()].sort((a, b) => a.date.localeCompare(b.date) || String(a.account || '').localeCompare(String(b.account || '')));
 }
 
 /** オーディエンス情報のマージ（新しい方を優先、欠けている項目は残す） */

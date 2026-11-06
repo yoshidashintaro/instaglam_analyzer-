@@ -30,6 +30,63 @@ function total(rows, key) {
 
 const rate = (a, b) => (a === null || !b ? null : (a / b) * 100);
 
+/**
+ * ソーシャルインサイトのファイル名のラベル（例「ミセルクリニック大阪」）やアカウント名から、ユーザーネームを引く関数を作る。
+ * ファイル名のラベルにはユーザーネームが入らないため、
+ * 日次インサイト（ラベル＋アカウント名）と投稿インサイト・ストーリーズ（アカウント名＋ユーザーネーム）を突き合わせる。
+ * 分からなければ null。
+ */
+export function accountResolver({ posts = [], accountDaily = [], stories = [] } = {}) {
+  const users = new Set(posts.map((p) => p.account).filter(Boolean));
+  const fullToUser = new Map();
+  for (const x of [...posts, ...stories]) if (x.account && x.accountName) fullToUser.set(x.accountName, x.account);
+  const labelToUser = new Map();
+  for (const r of accountDaily) {
+    const u = fullToUser.get(r.accountName);
+    if (r.account && u) labelToUser.set(r.account, u);
+  }
+  return (key) => (!key ? null : users.has(key) ? key : labelToUser.get(key) ?? fullToUser.get(key) ?? null);
+}
+
+/**
+ * 日次データから、1アカウントぶんを取り出す。
+ * ソーシャルインサイトの日次は取り込み時にファイルのラベル（account）を付けてある。
+ * 複数アカウントを取り込んでも、日付だけで重ねると別アカウントの数字（フォロワー数など）で上書きされてしまうため、
+ * 選んだアカウントのぶんだけを使う。ラベルの無い行（Meta の書き出し・API）は、そのまま土台にする。
+ * @returns {{rows:object[], label:?string, others:string[], unresolved:string[]}}
+ *          label: 使ったラベル。others: 使わなかったラベル。unresolved: どのアカウントか分からず使わなかったラベル
+ */
+export function pickAccountDaily(rows = [], { resolve = () => null, account = '' } = {}) {
+  const base = rows.filter((r) => !r.account);
+  const groups = new Map();
+  for (const r of rows) {
+    if (!r.account) continue;
+    if (!groups.has(r.account)) groups.set(r.account, []);
+    groups.get(r.account).push(r);
+  }
+  const labels = [...groups.keys()];
+  let label = labels.find((k) => account && resolve(k) === account) ?? null;
+  // 1アカウントぶんしか無く、どのアカウントか判別できないときは、それを使う（従来どおり）
+  if (!label && labels.length === 1 && !resolve(labels[0])) label = labels[0];
+  const unresolved = labels.filter((k) => k !== label && !resolve(k));
+  if (!label) return { rows: base, label: null, others: labels, unresolved };
+
+  // ラベルの無い行を土台に、選んだアカウントの値で上書きする（指標ごとにファイルが分かれていても埋まる）
+  const byDate = new Map(base.map((r) => [r.date, { ...r }]));
+  for (const r of groups.get(label)) {
+    const prev = byDate.get(r.date) || {};
+    const merged = { ...prev };
+    for (const [k, v] of Object.entries(r)) if (k !== 'account' && v !== null && v !== undefined) merged[k] = v;
+    byDate.set(r.date, merged);
+  }
+  return {
+    rows: [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)),
+    label,
+    others: labels.filter((k) => k !== label),
+    unresolved,
+  };
+}
+
 /** 日付キーを持つ行（アカウント日次）を期間で絞り込む */
 export function sliceByDate(rows = [], startKey = null, endKey = null) {
   return rows
