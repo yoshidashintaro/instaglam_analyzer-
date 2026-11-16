@@ -1,899 +1,281 @@
 <!doctype html>
 <html lang="ja">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="referrer" content="no-referrer" />
-  <meta name="robots" content="noindex, nofollow, noarchive" />
-  <title>Instagram インサイト分析</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📈</text></svg>" />
-  <link rel="stylesheet" href="css/style.css" />
-  <script>
-    // テーマの初期適用（ちらつき防止）
-    (function () {
-      var saved = null;
-      try { saved = localStorage.getItem('iia.theme'); } catch (e) {}
-      if (saved === 'light' || saved === 'dark') document.documentElement.dataset.theme = saved;
-    })();
-  </script>
-  <script src="vendor/chart.umd.min.js"></script>
-  <script>
-    window.Chart || document.write('<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"><\/script>');
-  </script>
-  <script type="module" src="js/app.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>医療法人社団EMIFULL｜「ここに行けば大丈夫」を増やす。（モック）</title>
+<meta name="description" content="美容医療・在宅医療・障がい福祉・外来・入院・介護。関西を中心に5つの事業で地域の困りごとに応える医療法人社団EMIFULLのコーポレートサイト（モック）">
+<link rel="stylesheet" href="assets/style.css">
 </head>
-<body>
-  <header class="topbar">
-    <div class="brand">
-      <span class="brand-mark" aria-hidden="true"></span>
-      <div>
-        <h1>Instagram インサイト分析</h1>
-        <p class="account" id="account-line">データ未接続</p>
+<body data-page="home" data-site="corp">
+<div id="site-header"></div>
+
+<main>
+  <!-- 1 MV（参考サイトの構成：全面スライド＋すりガラス＋円レンズ／手書きコピーが1文字ずつ） -->
+  <section class="mv" data-mv aria-label="メインビジュアル" data-req="MV：Missionをキャッチに／円レンズで「ここ」にピントが合う演出">
+    <div class="mv__slides">
+      <div class="mv__slide"><img src="img/ward-team.jpg" alt="病棟で患者を囲む医療チーム" fetchpriority="high"></div>
+      <div class="mv__slide"><img src="img/station-team.jpg" alt="ナースステーションで話す医療スタッフ" loading="lazy"></div>
+      <div class="mv__slide"><img src="img/nurse-child.jpg" alt="子どもの患者と話す看護師" loading="lazy" style="object-position:60% 40%"></div>
+      <div class="mv__slide"><img src="img/home-doctor.jpg" alt="ご自宅で患者と話す医師と看護師" loading="lazy" style="object-position:65% 50%"></div>
+      <div class="mv__slide"><img src="img/disability-care.jpg" alt="利用者と笑い合う支援員" loading="lazy" style="object-position:35% 50%"></div>
+    </div>
+    <div class="mv__mask" aria-hidden="true"></div>
+    <div class="mv__ring" aria-hidden="true"></div>
+    <div class="mv__inner">
+      <div class="container">
+        <span class="eyebrow mv__fade">Mission <small>使命</small></span>
+        <h1 class="mv__copy" data-split>「ここに行けば<br>大丈夫」を<br>増やす。</h1>
+        <p class="mv__sub mv__fade">美容医療・在宅医療・障がい福祉・外来・入院・介護。<br>関西のあちらこちらで、5つの事業が地域の「困りごと」に応えます。</p>
+        <dl class="mv__stats mv__fade">
+          <div><dd>5<small>事業</small></dd><dt>Business</dt></div>
+          <div><dd>390<small>名</small></dd><dt>職員数（2026.6）</dt></div>
+          <div><dd data-fac-count>26</dd><dt>関西の拠り所</dt></div>
+        </dl>
       </div>
     </div>
-    <div class="topbar-actions">
-      <div class="export-menu" id="export-menu" hidden>
-        <button class="btn" id="export-toggle" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="export-list">レポート出力 ▾</button>
-        <div class="export-list" id="export-list" role="menu" hidden>
-          <button type="button" role="menuitem" data-export="md">Markdown（.md）</button>
-          <button type="button" role="menuitem" data-export="docx">Word（.docx）</button>
-          <p class="export-hint">表示中の期間・絞り込みの全数値と分析を1ファイルにまとめます</p>
+    <div class="mv__ctrl"><div class="mv__dots" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></div><button class="video-toggle" type="button" aria-label="スライドを停止"></button></div>
+    <span class="mv__scroll" aria-hidden="true">SCROLL</span>
+    <a class="mv__news" href="#news"><b>NEWS</b><time>2026.06.01</time><span>カラダキッズてんり を開設しました</span></a>
+  </section>
+
+  <!-- 2 ABOUT -->
+  <section class="section" id="about">
+    <div class="container">
+      <div class="about-grid">
+        <div class="reveal">
+          <span class="eyebrow">About <small>EMIFULLについて</small></span>
+          <h2 class="about-copy" style="margin-top:22px">困っている人の声に応える。<br>それが、私たちの原点です。</h2>
+          <div class="verse" style="font-size:15px">
+            <p>2016年、ひとつのクリニックから始まりました。</p>
+            <p>通院が難しい方のために在宅診療を。自分らしくありたい方のために美容医療を。子どもたちの成長のために障がい福祉を。</p>
+            <p>目の前の困りごとに応えるたびに事業が生まれ、いまでは外来・入院、介護を加えた5つの事業で、地域の暮らしを支えています。</p>
+          </div>
+          <a class="link-more" href="about.html">EMIFULLについて</a>
+        </div>
+        <div class="reveal">
+          <button class="ceo-video" type="button" aria-label="理事長メッセージ動画を再生" data-req="理事長メッセージ動画（クリック後読込）">
+            <img src="img/consult-room.jpg" alt="" loading="lazy">
+            <span class="play"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></span>
+            <span class="ceo-video__cap"><b>理事長メッセージ</b>（撮影予定・約2分）</span>
+          </button>
+          <a class="ceo-card" href="about.html#message">
+            <img src="img/ceo.webp" alt="理事長・医師 松尾 太郎" loading="lazy">
+            <span><small>Message — 理事長メッセージ</small><b>地域にも、社員にも<br>誇れる組織作りを目指して</b><em>理事長・医師　松尾 太郎</em></span>
+          </a>
         </div>
       </div>
-      <button class="btn ghost icon" id="theme-toggle" type="button" aria-label="表示テーマを切り替え" title="表示テーマを切り替え">◐</button>
-      <button class="btn primary" id="open-data" type="button">データ接続・更新</button>
-    </div>
-  </header>
 
-  <main>
-    <!-- 初回表示 -->
-    <section class="empty" id="empty-state">
-      <h2>インスタのインサイトを自動でグラフ化・分析します</h2>
-      <p>フォロワーの増減、エンゲージメント率、投稿ごとの反応、最適な投稿時間帯をまとめて確認できます。</p>
-      <div class="empty-actions">
-        <button class="btn primary" type="button" data-open-tab="api">Instagram と連携する</button>
-        <button class="btn" type="button" data-open-tab="csv">CSV を読み込む</button>
-        <button class="btn" type="button" id="empty-shared">サーバーの共有データを読み込む</button>
-        <button class="btn ghost" type="button" id="empty-demo">デモデータで試す</button>
-      </div>
-    </section>
-
-    <div id="dashboard" hidden>
-      <!-- フィルタ（すべてのグラフに共通） -->
-      <div class="filters" role="group" aria-label="表示条件">
-        <div class="segmented" id="range" role="radiogroup" aria-label="期間">
-          <button type="button" role="radio" data-days="7">7日</button>
-          <button type="button" role="radio" data-days="30">30日</button>
-          <button type="button" role="radio" data-days="90">90日</button>
-          <button type="button" role="radio" data-days="180">180日</button>
-          <button type="button" role="radio" data-days="0">全期間</button>
-        </div>
-        <label class="select">
-          <span>ER の計算基準</span>
-          <select id="er-basis">
-            <option value="reach">リーチ基準（反応数 ÷ リーチ）</option>
-            <option value="followers">フォロワー基準（反応数 ÷ フォロワー数）</option>
-          </select>
-        </label>
-        <label class="select" id="account-filter-wrap" hidden>
-          <span>アカウント</span>
-          <select id="account-filter"></select>
-        </label>
-        <p class="period-note" id="period-note"></p>
-      </div>
-
-      <div class="notice" id="warnings" hidden></div>
-
-      <!-- KPI（各カードの「推移をみる」は別タブで過去の推移を開く） -->
-      <section class="kpis" aria-label="主要指標">
-        <article class="kpi kpi-hero">
-          <h3>フォロワー数</h3>
-          <p class="kpi-value" id="kpi-followers">–</p>
-          <p class="kpi-delta" id="kpi-followers-delta"></p>
-          <a class="kpi-trend" href="?trend=followers" target="_blank" rel="noopener">推移をみる</a>
-        </article>
-        <article class="kpi">
-          <h3>平均エンゲージメント率</h3>
-          <p class="kpi-value" id="kpi-er">–</p>
-          <p class="kpi-delta" id="kpi-er-delta"></p>
-          <a class="kpi-trend" href="?trend=er" target="_blank" rel="noopener">推移をみる</a>
-        </article>
-        <article class="kpi">
-          <h3>投稿数</h3>
-          <p class="kpi-value" id="kpi-posts">–</p>
-          <p class="kpi-delta" id="kpi-posts-delta"></p>
-          <a class="kpi-trend" href="?trend=posts" target="_blank" rel="noopener">推移をみる</a>
-        </article>
-        <article class="kpi">
-          <h3>平均リーチ／投稿</h3>
-          <p class="kpi-value" id="kpi-reach">–</p>
-          <p class="kpi-sub" id="kpi-reach-nonf"></p>
-          <p class="kpi-delta" id="kpi-reach-delta"></p>
-          <a class="kpi-trend" href="?trend=reach" target="_blank" rel="noopener">推移をみる</a>
-        </article>
-        <article class="kpi">
-          <h3>平均反応数／投稿</h3>
-          <p class="kpi-value" id="kpi-inter">–</p>
-          <p class="kpi-delta" id="kpi-inter-delta"></p>
-          <a class="kpi-trend" href="?trend=interactions" target="_blank" rel="noopener">推移をみる</a>
-        </article>
-        <article class="kpi" id="kpi-visits-card" hidden>
-          <h3>プロフィールアクセス</h3>
-          <p class="kpi-value" id="kpi-visits">–</p>
-          <p class="kpi-delta" id="kpi-visits-delta"></p>
-          <a class="kpi-trend" href="?trend=profileVisits" target="_blank" rel="noopener">推移をみる</a>
-        </article>
-        <article class="kpi" id="kpi-clicks-card" hidden>
-          <h3>リンククリック</h3>
-          <p class="kpi-value" id="kpi-clicks">–</p>
-          <p class="kpi-delta" id="kpi-clicks-delta"></p>
-          <a class="kpi-trend" href="?trend=linkClicks" target="_blank" rel="noopener">推移をみる</a>
-        </article>
-      </section>
-
-      <!-- KPI：Instagram からホームページへの流入（GA4） -->
-      <section class="kpis kpis-hp" aria-label="Instagram からホームページへの流入">
-        <p class="kpis-label">Instagram からホームページへの流入（GA4）</p>
-        <article class="kpi">
-          <h3>流入数（UU数）</h3>
-          <p class="kpi-value" id="kpi-hp-users">–</p>
-          <p class="kpi-delta" id="kpi-hp-users-delta"></p>
-          <a class="kpi-trend" href="?trend=hpUsers" target="_blank" rel="noopener">推移をみる</a>
-        </article>
-        <article class="kpi">
-          <h3>アクセス数（セッション数）</h3>
-          <p class="kpi-value" id="kpi-hp-sessions">–</p>
-          <p class="kpi-delta" id="kpi-hp-sessions-delta"></p>
-          <a class="kpi-trend" href="?trend=hpSessions" target="_blank" rel="noopener">推移をみる</a>
-        </article>
-        <article class="kpi">
-          <h3>新規ユーザー数</h3>
-          <p class="kpi-value" id="kpi-hp-new">–</p>
-          <p class="kpi-delta" id="kpi-hp-new-delta"></p>
-          <a class="kpi-trend" href="?trend=hpNewUsers" target="_blank" rel="noopener">推移をみる</a>
-        </article>
-        <article class="kpi">
-          <h3>新規率</h3>
-          <p class="kpi-value" id="kpi-hp-newrate">–</p>
-          <p class="kpi-delta" id="kpi-hp-newrate-delta"></p>
-          <a class="kpi-trend" href="?trend=hpNewRate" target="_blank" rel="noopener">推移をみる</a>
-        </article>
-        <article class="kpi">
-          <h3>エンゲージメント率</h3>
-          <p class="kpi-value" id="kpi-hp-engage">–</p>
-          <p class="kpi-delta" id="kpi-hp-engage-delta"></p>
-          <a class="kpi-trend" href="?trend=hpEngagement" target="_blank" rel="noopener">推移をみる</a>
-        </article>
-        <article class="kpi">
-          <h3>予約完了数（CV数）</h3>
-          <p class="kpi-value" id="kpi-hp-cv">–</p>
-          <p class="kpi-delta" id="kpi-hp-cv-delta"></p>
-          <a class="kpi-trend" href="?trend=hpCv" target="_blank" rel="noopener">推移をみる</a>
-        </article>
-        <article class="kpi">
-          <h3>CVR</h3>
-          <p class="kpi-value" id="kpi-hp-cvr">–</p>
-          <p class="kpi-delta" id="kpi-hp-cvr-delta"></p>
-          <a class="kpi-trend" href="?trend=hpCvr" target="_blank" rel="noopener">推移をみる</a>
-        </article>
-      </section>
-
-      <!-- 自動インサイト -->
-      <section class="block">
-        <div class="block-head">
-          <h2>自動分析レポート</h2>
-          <p>選択中の期間のデータから自動で抽出した傾向と改善ポイントです。</p>
-        </div>
-        <ul class="insights" id="insights"></ul>
-      </section>
-
-      <!-- KPI ツリー -->
-      <section class="block" id="kpi-block">
-        <div class="block-head">
-          <h2>KPI ツリー（目標に対する進捗）</h2>
-          <p id="kpi-lead"></p>
-        </div>
-
-        <div class="grid-2-1">
-          <article class="card" id="kpi-funnel-card">
-            <header><div><h3>見る → 残す → 深める → つながる → HPへ</h3><p class="sub">投稿を見た人がたどる5段階。各段階の代表の数字と、何に対する割合かを表示します</p></div></header>
-            <ol class="stage-funnel" id="kpi-funnel"></ol>
-          </article>
-          <article class="card" id="kpi-kgi-card">
-            <header><div><h3>KGI</h3><p class="sub">最終目標。月あたりに換算した実績です</p></div></header>
-            <div id="kpi-kgi"></div>
-          </article>
-        </div>
-
-        <article class="card">
-          <header>
-            <div><h3>指標ごとの進捗</h3><p class="sub" id="kpi-table-sub"></p></div>
-            <div class="card-actions">
-              <button class="btn small" type="button" id="kpi-edit" aria-pressed="false">基準・目標を編集</button>
-              <button class="btn small" type="button" id="export-kpi">CSV 出力</button>
-            </div>
-          </header>
-          <div class="table-wrap">
-            <table class="data-table" id="kpi-table"><thead></thead><tbody></tbody></table>
-          </div>
-          <p class="help small" id="kpi-note"></p>
-        </article>
-
-        <article class="card" id="action-correlation-card">
-          <header>
-            <div><h3>投稿と行動の相関</h3><p class="sub" id="action-corr-sub"></p></div>
-            <label class="select compact">
-              <span class="sr-only">相関の相手</span>
-              <select id="action-corr-target"></select>
-            </label>
-          </header>
-          <div class="table-wrap">
-            <table class="data-table" id="action-corr-table">
-              <thead>
-                <tr>
-                  <th>投稿側の指標</th>
-                  <th class="num">相関 r</th>
-                  <th class="num">順位相関 ρ</th>
-                  <th class="num">p 値</th>
-                  <th class="num">95% 信頼区間</th>
-                  <th class="num">時期の影響を除いた r</th>
-                  <th class="num">増減どうしの r</th>
-                  <th>見かた</th>
-                  <th class="num">推定値</th>
-                </tr>
-              </thead>
-              <tbody></tbody>
-            </table>
-          </div>
-          <p class="note-line" id="action-corr-note"></p>
-        </article>
-
-        <article class="card" id="correlation-card">
-          <header>
-            <div><h3>投稿と流入の相関</h3><p class="sub" id="corr-sub"></p></div>
-            <label class="select compact">
-              <span class="sr-only">相関の相手</span>
-              <select id="corr-target"></select>
-            </label>
-          </header>
-          <div class="table-wrap">
-            <table class="data-table" id="corr-table">
-              <thead>
-                <tr>
-                  <th>投稿側の指標</th>
-                  <th class="num">相関 r</th>
-                  <th class="num">順位相関 ρ</th>
-                  <th class="num">p 値</th>
-                  <th class="num">95% 信頼区間</th>
-                  <th class="num">時期の影響を除いた r</th>
-                  <th class="num">増減どうしの r</th>
-                  <th>見かた</th>
-                  <th class="num">推定値（獲得数）</th>
-                </tr>
-              </thead>
-              <tbody></tbody>
-            </table>
-          </div>
-          <p class="note-line" id="corr-note"></p>
-          <label class="check brand-terms" id="brand-terms-row" hidden>
-            <span>指名キーワードの語（カンマ区切り）</span>
-            <input type="text" id="brand-terms" placeholder="ミセルクリニック, misel" />
-            <span class="sub" id="brand-terms-note"></span>
-          </label>
-        </article>
-      </section>
-
-      <!-- フォロワー -->
-      <section class="block">
-        <div class="block-head"><h2>フォロワーの増減</h2></div>
-        <div class="grid-2">
-          <article class="card" data-chart="c-followers">
-            <header><div><h3>フォロワー数の推移</h3><p class="sub" id="followers-sub">日次</p></div></header>
-            <div class="chart h-260"><canvas id="c-followers" role="img" aria-label="フォロワー数の推移"></canvas></div>
-          </article>
-          <article class="card" data-chart="c-net">
-            <header><div><h3 id="net-title">日次の純増減</h3><p class="sub"><span class="key key-pos"></span>増加 <span class="key key-neg"></span>減少</p></div></header>
-            <div class="chart h-260"><canvas id="c-net" role="img" aria-label="日次のフォロワー増減"></canvas></div>
-          </article>
-        </div>
-      </section>
-
-      <!-- アカウントの活動（日次インサイト） -->
-      <section class="block" id="activity-block" hidden>
-        <div class="block-head">
-          <h2>アカウントの活動</h2>
-          <p>投稿単位ではなく、アカウント全体の1日ごとの数字です。「見られた → プロフィールに来た → リンクを押した」の流れを確認できます。</p>
-        </div>
-        <article class="card" data-chart="c-reach" id="reach-card">
-          <header><div><h3>リーチとビューの推移</h3><p class="sub" id="reach-sub">日次</p></div></header>
-          <div class="chart h-240"><canvas id="c-reach" role="img" aria-label="日次のリーチとビューの推移"></canvas></div>
-        </article>
-        <div class="grid-2-1">
-          <article class="card" data-chart="c-traffic" id="traffic-card">
-            <header><div><h3>プロフィールアクセス・リンククリック</h3><p class="sub">日次の遷移数とコンテンツへの反応</p></div></header>
-            <div class="chart h-260"><canvas id="c-traffic" role="img" aria-label="プロフィールアクセスとリンククリックの推移"></canvas></div>
-          </article>
-          <article class="card" id="funnel-card">
-            <header><div><h3>予約までの導線</h3><p class="sub">期間合計と、ひとつ前の段階からの通過率</p></div></header>
-            <div class="funnel" id="funnel"></div>
-          </article>
-        </div>
-
-        <!-- 面別・アクション別の内訳（日次インサイトがあるときだけ） -->
-        <div class="grid-2-1" id="surface-row" hidden>
-          <article class="card" data-chart="c-surface" id="surface-card">
-            <header><div><h3>どこで見られているか</h3><p class="sub">期間合計を、フィード・リール・ストーリーズなどの面ごとに分けた内訳</p></div></header>
-            <div class="chart h-260"><canvas id="c-surface" role="img" aria-label="面別の閲覧数とリーチ"></canvas></div>
-          </article>
-          <article class="card" id="account-totals-card">
-            <header><div><h3>リーチの内訳と転換率</h3><p class="sub">期間合計（実測値）</p></div></header>
-            <dl class="stat-list" id="account-totals"></dl>
-          </article>
-        </div>
-        <article class="card" data-chart="c-clicks" id="clicks-card" hidden>
-          <header><div><h3>プロフィールからのアクション</h3><p class="sub">期間合計。ウェブサイト・電話・メッセージなど、押された種類ごとの件数</p></div></header>
-          <div class="chart h-220"><canvas id="c-clicks" role="img" aria-label="プロフィールからのアクションの内訳"></canvas></div>
-        </article>
-
-        <div class="grid-2" id="formats-row" hidden>
-          <article class="card" data-chart="c-formats-views">
-            <header><div><h3>形式別のビュー</h3><p class="sub" id="formats-sub"></p></div></header>
-            <div class="chart h-240"><canvas id="c-formats-views" role="img" aria-label="形式別のビュー"></canvas></div>
-          </article>
-          <article class="card">
-            <header><div><h3>形式別の投稿数と反応</h3><p class="sub">Top content formats の書き出し。日付を持たないため、期間フィルタの対象外です</p></div></header>
-            <div class="table-wrap">
-              <table class="data-table" id="formats-table"><thead></thead><tbody></tbody></table>
-            </div>
-          </article>
-        </div>
-      </section>
-
-      <!-- ストーリーズ -->
-      <section class="block" id="stories-block" hidden>
-        <div class="block-head">
-          <h2>ストーリーズ</h2>
-          <p>投稿（フィード・リール）とは指標が違うため、エンゲージメント率ではなく「閲覧率（フォロワーのうち何％が見たか）」と「離脱率」で見ます。</p>
-        </div>
-        <div class="grid-2-1">
-          <article class="card" data-chart="c-stories">
-            <header>
-              <div><h3 id="stories-chart-title">日ごとのストーリーズ</h3><p class="sub" id="stories-chart-sub">閲覧数・リーチと本数</p></div>
-            </header>
-            <div class="chart h-260"><canvas id="c-stories" role="img" aria-label="日ごとのストーリーズの閲覧数"></canvas></div>
-          </article>
-          <article class="card">
-            <header><div><h3>期間のまとめ</h3><p class="sub" id="stories-sum-sub"></p></div></header>
-            <dl class="stat-list" id="stories-summary"></dl>
-          </article>
-        </div>
-        <div class="grid-2">
-          <article class="card" data-chart="c-stories-hour">
-            <header><div><h3>投稿した時間帯別 平均閲覧率</h3><p class="sub">2本以上ある時間帯のみ・濃い棒＝上位3枠</p></div></header>
-            <div class="chart h-240"><canvas id="c-stories-hour" role="img" aria-label="時間帯別のストーリーズ平均閲覧率"></canvas></div>
-          </article>
-          <article class="card" data-chart="c-stories-funnel">
-            <header><div><h3>見た人のその後</h3><p class="sub">閲覧数に対する割合（次へ／戻る／離脱／スキップ）</p></div></header>
-            <div class="chart h-240"><canvas id="c-stories-funnel" role="img" aria-label="ストーリーズを見た人のその後の行動"></canvas></div>
-          </article>
-        </div>
-        <article class="card">
-          <header>
-            <div><h3>ストーリーズ一覧</h3><p class="sub" id="stories-count"></p></div>
-            <div class="table-tools"><button class="btn small" type="button" id="export-stories">CSV 出力</button></div>
-          </header>
-          <div class="table-wrap">
-            <table class="data-table" id="stories-table">
-              <thead>
-                <tr>
-                  <th>投稿日時</th>
-                  <th>種別</th>
-                  <th>内容</th>
-                  <th class="num">閲覧</th>
-                  <th class="num" title="フォロワー数に対する閲覧率">閲覧率</th>
-                  <th class="num">リーチ</th>
-                  <th class="num" title="そこで見るのをやめた人数">離脱</th>
-                  <th class="num" title="次のストーリーズへ送った回数">次へ</th>
-                  <th class="num" title="前のストーリーズへ戻った回数">戻る</th>
-                  <th class="num">返信</th>
-                  <th class="num" title="このストーリーズきっかけのフォロー">フォロー</th>
-                  <th class="num">プロフ遷移</th>
-                  <th class="num">リンク</th>
-                </tr>
-              </thead>
-              <tbody></tbody>
-            </table>
-          </div>
-        </article>
-      </section>
-
-      <!-- エンゲージメント -->
-      <section class="block">
-        <div class="block-head"><h2>エンゲージメント率</h2><p id="er-def"></p></div>
-        <div class="grid-2-1">
-          <article class="card" data-chart="c-er">
-            <header><div><h3>投稿ごとのエンゲージメント率</h3><p class="sub">点＝各投稿（形で投稿タイプを区別）、線＝週平均</p></div></header>
-            <div class="chart h-300"><canvas id="c-er" role="img" aria-label="投稿ごとのエンゲージメント率と週平均"></canvas></div>
-          </article>
-          <article class="card" data-chart="c-type">
-            <header><div><h3>投稿タイプ別 平均ER</h3><p class="sub">タイプごとの平均エンゲージメント率</p></div></header>
-            <div class="chart h-300"><canvas id="c-type" role="img" aria-label="投稿タイプ別の平均エンゲージメント率"></canvas></div>
-          </article>
-        </div>
-      </section>
-
-      <!-- 投稿ごとの反応 -->
-      <section class="block">
-        <div class="block-head"><h2>投稿ごとの反応</h2></div>
-        <article class="card" data-chart="c-top">
-          <header>
-            <div><h3>上位10投稿</h3><p class="sub">棒をクリックすると投稿を開きます（API 連携時）</p></div>
-            <label class="select compact">
-              <span class="sr-only">並べ替え指標</span>
-              <select id="top-metric"></select>
-            </label>
-          </header>
-          <div class="chart h-340"><canvas id="c-top" role="img" aria-label="上位10投稿"></canvas></div>
-        </article>
-
-        <article class="card">
-          <header>
-            <div><h3>全投稿一覧</h3><p class="sub" id="posts-count"></p><p class="sub" id="history-status"></p></div>
-            <div class="table-tools">
-              <input type="search" id="post-search" placeholder="キャプション・ハッシュタグで絞り込み" aria-label="投稿を検索" />
-              <button class="btn small" type="button" id="export-posts">CSV 出力</button>
-            </div>
-          </header>
-          <div class="table-wrap">
-            <table class="data-table posts-table" id="posts-table">
-              <thead>
-                <tr>
-                  <th data-sort="timestamp">投稿日時</th>
-                  <th data-sort="type">タイプ</th>
-                  <th>内容</th>
-                  <th data-sort="views" class="num col-views">ビュー</th>
-                  <th data-sort="reach" class="num">リーチ</th>
-                  <th data-sort="nonFollowerReach" class="num col-nonFollowerReach" title="フォロワー以外へのリーチ。≈ はリーチ内訳の比率による推定値">非フォロワー</th>
-                  <th data-sort="likes" class="num">いいね</th>
-                  <th data-sort="comments" class="num">コメント</th>
-                  <th data-sort="saves" class="num">保存</th>
-                  <th data-sort="shares" class="num">シェア</th>
-                  <th data-sort="follows" class="num col-follows">フォロー</th>
-                  <th data-sort="profileVisits" class="num col-profileVisits" title="その投稿からプロフィールへ移動した回数">プロフ遷移</th>
-                  <th data-sort="avgWatchSec" class="num col-avgWatchSec" title="リールの平均再生時間（秒）">平均再生</th>
-                  <th data-sort="interactions" class="num">反応計</th>
-                  <th data-sort="searchImpressions" class="num col-searchImpressions" title="Google 検索の結果にこの投稿が表示された回数（Search Console）">検索表示</th>
-                  <th data-sort="searchClicks" class="num col-searchClicks" title="Google 検索の結果からこの投稿が開かれた回数（Search Console）">検索クリック</th>
-                  <th data-sort="searchPosition" class="num col-searchPosition" title="Google 検索での平均掲載順位（小さいほど上位）">検索順位</th>
-                  <th data-sort="er" class="num">ER</th>
-                  <th class="col-detail" title="日次で取り込んだデータから、投稿後のいいね・保存の伸びを表示します">詳細</th>
-                </tr>
-              </thead>
-              <tbody></tbody>
-            </table>
-          </div>
-        </article>
-      </section>
-
-      <!-- 投稿時間 -->
-      <section class="block">
-        <div class="block-head">
-          <h2>最適な投稿時間帯</h2>
-          <p>投稿した曜日・時間帯（日本時間）ごとの平均エンゲージメント率。投稿数の少ない枠は全体平均に寄せて評価しています。</p>
-        </div>
-        <div class="grid-2-1">
-          <article class="card" data-heatmap="1">
-            <header><div><h3>曜日 × 時間帯</h3><p class="sub">濃いほど反応が良い・数値はおすすめ上位3枠</p></div></header>
-            <div class="heatmap" id="heatmap" role="grid" aria-label="曜日と時間帯ごとの平均エンゲージメント率"></div>
-            <div class="scale" aria-hidden="true"><span>低い</span><i class="scale-bar"></i><span>高い</span><span class="scale-empty"><i></i>投稿なし</span></div>
-          </article>
-          <article class="card">
-            <header><div><h3>おすすめの投稿枠</h3><p class="sub">2投稿以上ある枠から算出</p></div></header>
-            <ol class="best-slots" id="best-slots"></ol>
-          </article>
-        </div>
-        <div class="grid-2">
-          <article class="card" data-chart="c-hour">
-            <header><div><h3>時間帯別 平均ER</h3><p class="sub">濃い棒＝上位3時間帯</p></div></header>
-            <div class="chart h-240"><canvas id="c-hour" role="img" aria-label="時間帯別の平均エンゲージメント率"></canvas></div>
-          </article>
-          <article class="card" data-chart="c-weekday">
-            <header><div><h3>曜日別 平均ER</h3><p class="sub">濃い棒＝上位2曜日</p></div></header>
-            <div class="chart h-240"><canvas id="c-weekday" role="img" aria-label="曜日別の平均エンゲージメント率"></canvas></div>
-          </article>
-        </div>
-      </section>
-
-      <!-- GA4：HPへの流入 -->
-      <!-- Google 検索（Search Console） -->
-      <section class="block" id="search-block" hidden>
-        <div class="block-head">
-          <h2>Google 検索からの流入（Search Console）</h2>
-          <p id="search-lead">検索結果での表示回数・クリック・掲載順位です。投稿一覧の「検索表示・検索クリック・検索順位」の列も同じデータです。</p>
-        </div>
-
-        <div class="filters" id="search-filters">
-          <div class="segmented" id="search-scope" role="radiogroup" aria-label="対象プロパティ">
-            <button type="button" role="radio" data-scope="instagram">Instagram</button>
-            <button type="button" role="radio" data-scope="site">ホームページ</button>
-            <button type="button" role="radio" data-scope="all">すべて</button>
-          </div>
-          <label class="select">
-            <span>並べ替え</span>
-            <select id="search-sort">
-              <option value="clicks">クリック数</option>
-              <option value="impressions">表示回数</option>
-              <option value="ctr">CTR</option>
-              <option value="position">掲載順位（上位から）</option>
-            </select>
-          </label>
-        </div>
-
-        <div class="grid-2-1">
-          <article class="card" data-chart="c-search-queries">
-            <header>
-              <div><h3>検索クエリ</h3><p class="sub" id="search-query-sub"></p></div>
-              <div class="card-actions"><button class="btn small" type="button" id="export-search">CSV 出力</button></div>
-            </header>
-            <div class="chart h-340"><canvas id="c-search-queries" role="img" aria-label="検索クエリ別のクリック数"></canvas></div>
-          </article>
-          <article class="card">
-            <header><div><h3>期間の合計</h3><p class="sub" id="search-period"></p></div></header>
-            <dl class="stat-list" id="search-summary"></dl>
-          </article>
-        </div>
-
-        <div class="grid-2">
-          <article class="card">
-            <header><div><h3>検索クエリ一覧</h3><p class="sub">クリック・表示回数・CTR・掲載順位</p></div></header>
-            <div class="table-wrap">
-              <table class="data-table" id="search-query-table"><thead></thead><tbody></tbody></table>
-            </div>
-          </article>
-          <article class="card" id="search-gap-card">
-            <header><div><h3>伸びしろのある検索語</h3><p class="sub">上位に出ているのに、クリックが平均より少ない検索語</p></div></header>
-            <div class="table-wrap">
-              <table class="data-table" id="search-gap-table"><thead></thead><tbody></tbody></table>
-            </div>
-          </article>
-        </div>
-
-        <div class="grid-2" id="search-post-row">
-          <article class="card">
-            <header><div><h3>検索から見つかっている投稿</h3><p class="sub" id="search-post-sub">Google 検索での表示回数が多い投稿</p></div></header>
-            <div class="table-wrap">
-              <table class="data-table" id="search-post-table"><thead></thead><tbody></tbody></table>
-            </div>
-          </article>
-          <article class="card" data-chart="c-search-device">
-            <header><div><h3>デバイス別</h3><p class="sub">検索結果からのクリック</p></div></header>
-            <div class="chart h-240"><canvas id="c-search-device" role="img" aria-label="デバイス別のクリック数"></canvas></div>
-          </article>
-        </div>
-      </section>
-
-      <section class="block" id="traffic-block" hidden>
-        <div class="block-head">
-          <h2>HPへの流入（GA4）</h2>
-          <p id="traffic-lead">Instagram の投稿と、着地先ホームページへの流入を週単位で突き合わせています。</p>
-        </div>
-
-        <div class="grid-2-1">
-          <article class="card" data-chart="c-traffic-weeks">
-            <header><div><h3>週ごとの Instagram 流入</h3><p class="sub">オーガニックと広告は分けて見ます</p></div></header>
-            <div class="chart h-280"><canvas id="c-traffic-weeks" role="img" aria-label="週ごとのInstagram流入"></canvas></div>
-          </article>
-          <article class="card" id="traffic-summary-card">
-            <header><div><h3>期間の合計</h3><p class="sub">Instagram からの流入のみ</p></div></header>
-            <dl class="stat-list" id="traffic-summary"></dl>
-          </article>
-        </div>
-
-
-        <div class="grid-2">
-          <article class="card" data-chart="c-scatter">
-            <header>
-              <div><h3>散布図</h3><p class="sub" id="scatter-sub">点＝1週間。直線は傾向を示すだけで、因果ではありません</p></div>
-              <label class="select compact">
-                <span class="sr-only">散布図の指標</span>
-                <select id="scatter-driver"></select>
-              </label>
-            </header>
-            <div class="chart h-300"><canvas id="c-scatter" role="img" aria-label="投稿指標とHP流入の散布図"></canvas></div>
-          </article>
-          <article class="card" data-chart="c-traffic-account">
-            <header><div><h3>流入元アカウント別</h3><p class="sub">参照元/メディアから振り分けた集計</p></div></header>
-            <div class="chart h-300"><canvas id="c-traffic-account" role="img" aria-label="アカウント別のHP流入"></canvas></div>
-          </article>
-        </div>
-
-        <article class="card" id="campaign-card" hidden>
-          <header><div><h3>UTM キャンペーン別の流入</h3><p class="sub">リンクに utm_campaign を付けた分だけ、どの施策からの流入か分かります</p></div></header>
-          <div class="table-wrap">
-            <table class="data-table" id="campaign-table">
-              <thead><tr><th>キャンペーン</th><th class="num">セッション</th><th class="num">ユーザー</th><th class="num">予約タップ</th><th class="num">タップ率</th></tr></thead>
-              <tbody></tbody>
-            </table>
-          </div>
-        </article>
-
-        <article class="card" id="landing-card" hidden>
-          <header><div><h3>リンククリックは HP に届いているか</h3><p class="sub">Instagram が数えたクリックと、GA4 が計測した流入の差</p></div></header>
-          <div class="table-wrap">
-            <table class="data-table" id="landing-table">
-              <thead><tr><th>週</th><th class="num">リンククリック</th><th class="num">GA4 の流入</th><th class="num">到達率</th></tr></thead>
-              <tbody></tbody>
-            </table>
-          </div>
-          <p class="note-line" id="landing-note"></p>
-        </article>
-      </section>
-
-      <!-- オーディエンス -->
-      <section class="block" id="audience-block" hidden>
-        <div class="block-head">
-          <h2>フォロワーの内訳</h2>
-          <p id="audience-lead">Meta の「オーディエンス」エクスポートから読み取った、現在のフォロワーの構成です（期間の切り替えには連動しません）。</p>
-        </div>
-        <div class="grid-2-1">
-          <article class="card" data-chart="c-age" id="age-card">
-            <header><div><h3>年齢層 × 性別</h3><p class="sub">フォロワー全体に占める割合</p></div></header>
-            <div class="chart h-280"><canvas id="c-age" role="img" aria-label="年齢層と性別の構成比"></canvas></div>
-          </article>
-          <article class="card" data-chart="c-country" id="country-card">
-            <header><div><h3>上位の国</h3><p class="sub">フォロワーの所在国</p></div></header>
-            <div class="chart h-280"><canvas id="c-country" role="img" aria-label="フォロワーの上位の国"></canvas></div>
-          </article>
-        </div>
-        <article class="card" data-chart="c-city" id="city-card">
-          <header><div><h3>上位の都市</h3><p class="sub">来院できる範囲かどうかの目安になります</p></div></header>
-          <div class="chart h-300"><canvas id="c-city" role="img" aria-label="フォロワーの上位の都市"></canvas></div>
-        </article>
-      </section>
-
-      <!-- ハッシュタグ -->
-      <section class="block">
-        <div class="block-head"><h2>ハッシュタグ別の反応</h2><p>2回以上使ったハッシュタグの平均ER（全体平均との比較）</p></div>
-        <article class="card">
-          <header><div><h3>取り込んだ投稿から集計</h3><p class="sub">表示中の期間の投稿のキャプションにあるハッシュタグ</p></div></header>
-          <div class="table-wrap">
-            <table class="data-table" id="hashtag-table">
-              <thead><tr><th>ハッシュタグ</th><th class="num">使用回数</th><th class="num">平均ER</th><th class="num">全体平均比</th><th class="num">平均リーチ</th></tr></thead>
-              <tbody></tbody>
-            </table>
-          </div>
-        </article>
-
-        <!-- ソーシャルインサイトのハッシュタグ分析（書き出し単位の集計） -->
-        <article class="card" id="tool-hashtag-card" hidden>
-          <header>
-            <div><h3>ソーシャルインサイトの集計</h3><p class="sub" id="tool-hashtag-sub"></p></div>
-            <label class="select compact">
-              <span class="sr-only">集計する書き出し・期間</span>
-              <select id="tool-hashtag-set"></select>
-            </label>
-          </header>
-          <div class="table-wrap">
-            <table class="data-table" id="tool-hashtag-table"><thead></thead><tbody></tbody></table>
-          </div>
-        </article>
-      </section>
-
-      <!-- ベンチマーク（フォロー中アカウント・タグ付き投稿） -->
-      <section class="block" id="benchmark-block" hidden>
-        <div class="block-head">
-          <h2>他アカウントとの関係</h2>
-          <p>自社がフォローしているアカウント（競合・関連先）と、自社をタグ付け・メンションした投稿です（期間の切り替えはタグ付き投稿のみ連動します）。</p>
-        </div>
-        <div class="grid-2-1" id="followed-row" hidden>
-          <article class="card">
-            <header>
-              <div><h3>フォロー中アカウント</h3><p class="sub" id="followed-count"></p></div>
-              <div class="table-tools"><button class="btn small" type="button" id="export-followed">CSV 出力</button></div>
-            </header>
-            <div class="table-wrap">
-              <table class="data-table" id="followed-table">
-                <thead><tr><th>ユーザーネーム</th><th>プロフィール</th><th class="num">フォロワー</th><th class="num">投稿数</th><th class="num">フォロー数</th></tr></thead>
-                <tbody></tbody>
-              </table>
-            </div>
-          </article>
-          <article class="card">
-            <header><div><h3>フォロー先でよく使われるタグ</h3><p class="sub">同じ領域のアカウントが付けているハッシュタグ</p></div></header>
-            <dl class="stat-list" id="followed-tags"></dl>
-          </article>
-        </div>
-        <article class="card" id="tagged-card" hidden>
-          <header>
-            <div><h3>タグ付き投稿</h3><p class="sub" id="tagged-count"></p></div>
-            <div class="table-tools"><button class="btn small" type="button" id="export-tagged">CSV 出力</button></div>
-          </header>
-          <div class="table-wrap">
-            <table class="data-table" id="tagged-table">
-              <thead><tr><th>投稿日時</th><th>アカウント</th><th>タイプ</th><th>内容</th><th class="num">いいね</th><th class="num">コメント</th></tr></thead>
-              <tbody></tbody>
-            </table>
-          </div>
-        </article>
-      </section>
-    </div>
-
-    <!-- 指標の推移（上部の指標の「推移をみる」から別タブで開く） -->
-    <div id="trend-view" hidden>
-      <div class="trend-head">
-        <a class="btn small" id="trend-back" href="./">← ダッシュボードへ</a>
+      <div class="mission-band paper reveal">
+        <span class="eyebrow">Purpose <small>存在意義</small></span>
         <div>
-          <p class="trend-group" id="trend-group"></p>
-          <h2 id="trend-title">指標の推移</h2>
-          <p class="sub" id="trend-def"></p>
+          <p class="mission">人生、咲かそう。</p>
+          <p style="margin-top:8px">一人ひとりの人生が、その人らしい色で、豊かに花開く。そんな未来を、私たちは咲かせていく。</p>
+        </div>
+        <a class="btn btn--ghost btn--arrow" href="about.html#pmvv">理念・5つの約束</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3 SERVICE -->
+  <section class="section section--tint paper" id="business">
+    <div class="container">
+      <div class="sec-head">
+        <span class="eyebrow">Service <small>事業</small></span>
+        <h2 class="h-sec" style="margin-top:20px">5つの事業</h2>
+        <p class="lead">0歳から100歳まで。人生の節目やターニングポイントに、いつもEMIFULLの事業があります。</p>
+      </div>
+
+      <div class="lifemap reveal" data-lifemap="#biz-"></div>
+
+      <div class="biz-rows">
+        <article class="biz-row reveal" id="biz-gairai">
+          <div class="biz-row__img"><img src="img/ward-team.jpg" alt="病棟で患者を囲む医療チーム" loading="lazy"></div>
+          <div class="biz-row__body">
+            <span class="biz-row__no">#01<span>日々の健康</span></span>
+            <h3>外来・入院</h3>
+            <p class="catch">地域のかかりつけとして、日々の健康を支える。</p>
+            <p class="desc">長く地域に根づいてきた医院を受け継ぎ、外来・入院・訪問診療で、毎日の健康をそばで支えます。</p>
+            <ul class="pills"><li>外来診療</li><li>入院</li><li>医療リハビリ</li></ul>
+            <a class="link-more" href="business.html#gairai">詳しく見る</a>
+          </div>
+        </article>
+        <article class="biz-row reveal" id="biz-biyou">
+          <div class="biz-row__img"><img src="img/lobby.jpg" alt="明るいクリニックの待合" loading="lazy"></div>
+          <div class="biz-row__body">
+            <span class="biz-row__no">#02<span>自分らしさ</span></span>
+            <h3>美容医療</h3>
+            <p class="catch">通いやすい場所で、自分らしい毎日を。</p>
+            <p class="desc">医療脱毛や美肌治療を中心に、男性専門クリニックやアートメイクも。一人ひとりの「こうありたい」に応えます。</p>
+            <ul class="pills"><li>医療脱毛</li><li>しみ・美肌治療</li><li>アートメイク</li><li>メンズ</li></ul>
+            <a class="link-more" href="business.html#biyou">詳しく見る</a>
+          </div>
+        </article>
+        <article class="biz-row reveal" id="biz-zaitaku">
+          <div class="biz-row__img"><img src="img/home-doctor.jpg" alt="ご自宅で診療する医師" loading="lazy" style="object-position:70% 50%"></div>
+          <div class="biz-row__body">
+            <span class="biz-row__no">#03<span>住み慣れた家で</span></span>
+            <h3>在宅医療</h3>
+            <p class="catch">通院が難しくなっても、住み慣れた家で医療を。</p>
+            <p class="desc">医師がご自宅や施設を定期的に訪問し、診療を行います。自宅で治療し、自宅で最期を迎えるという選択を支えます。</p>
+            <ul class="pills"><li>訪問診療</li><li>兵庫〜大阪エリア</li></ul>
+            <a class="link-more" href="business.html#zaitaku">詳しく見る</a>
+          </div>
+        </article>
+        <article class="biz-row reveal" id="biz-kaigo">
+          <div class="biz-row__img"><img src="img/home-outdoor.jpg" alt="車いすの利用者と話す介護職員" loading="lazy"></div>
+          <div class="biz-row__body">
+            <span class="biz-row__no">#04<span>家族の介護</span></span>
+            <h3>介護</h3>
+            <p class="catch">ご本人とご家族の暮らしを、介護で支える。</p>
+            <p class="desc">入居・通所・訪問・居宅介護支援まで。医療と連携しながら、ご家族の負担にも目を向けたケアを届けます。</p>
+            <ul class="pills"><li>入居</li><li>通所</li><li>訪問介護・看護</li><li>居宅介護支援</li></ul>
+            <a class="link-more" href="business.html#kaigo">詳しく見る</a>
+          </div>
+        </article>
+        <article class="biz-row reveal" id="biz-shogai">
+          <div class="biz-row__img"><img src="img/disability-care.jpg" alt="利用者と笑顔で過ごす支援員" loading="lazy" style="object-position:30% 50%"></div>
+          <div class="biz-row__body">
+            <span class="biz-row__no">#05<span>子どもの成長</span></span>
+            <h3>障がい福祉</h3>
+            <p class="catch">就学前から大人になるまで、切れ目なく支える。</p>
+            <p class="desc">児童発達支援から放課後等デイサービス、グループホームまで。年代をまたいで、障がいのある方とご家族に寄り添います。</p>
+            <ul class="pills"><li>児童発達支援</li><li>放課後等デイ</li><li>グループホーム</li><li>就労支援</li></ul>
+            <a class="link-more" href="business.html#shogai">詳しく見る</a>
+          </div>
+        </article>
+      </div>
+      <section class="growth" aria-labelledby="growth-top" data-req="成長グラフ：年間のべ利用者数（数値はダミー。本番は実績データに差し替え）">
+        <div class="growth__head">
+          <div>
+            <span class="eyebrow">Growth <small>成長の歩み</small></span>
+            <h3 class="growth__title" id="growth-top">地域に選ばれ、<br>利用者は10年で約40倍に。</h3>
+            <p class="growth__lead">1つのクリニックから始まり、在宅医療・美容医療・障がい福祉・介護へ。<br>事業が広がるたびに、頼ってくださる方が増えてきました。</p>
+          </div>
+          <dl class="growth__stats">
+            <div><dt>年間のべ利用者数<span>2025年度</span></dt><dd>15<small>万人</small></dd></div>
+            <div class="is-plan"><dt>2030年度の見込み<span>現在の約2倍</span></dt><dd>30<small>万人</small></dd></div>
+          </dl>
+        </div>
+        <div class="growth__chart" data-growth-chart></div>
+        <p class="sample-note">※数値はダミーです（モック）。グループ全事業（外来・入院・在宅・美容・介護・障がい福祉）の年間のべ利用者数。2026年度以降は事業計画にもとづく見込み。</p>
+      </section>
+      <p class="center" style="margin-top:36px"><a class="btn btn--ghost btn--arrow" href="business.html">事業案内を見る</a></p>
+    </div>
+  </section>
+
+  <!-- 4 LOCATIONS（新規） -->
+  <section class="section paper" id="locations" data-kansai-map>
+    <div class="blobs" aria-hidden="true">
+      <span class="blob blob--sage s2" style="width:180px;height:160px;left:-80px;top:80px"></span>
+      <span class="blob blob--coral s4" style="width:120px;height:100px;right:-30px;bottom:120px;opacity:.55"></span>
+    </div>
+    <div class="container">
+      <div class="sec-head">
+        <span class="eyebrow">Group Map <small>グループマップ</small></span>
+        <p class="loc-lead" style="margin-top:22px">関西のあちらこちらに、<br><em data-fac-count>26</em>の「大丈夫」。</p>
+        <div class="verse map-verse">
+          <p>人それぞれ違う、未来への想い。<br>私たちは、そのひとつひとつを尊重し、<br>地域の方々が求めている事業を展開することで<br>想いを叶えるお手伝いをします。<br>誰もが、型にはまった常識や諦めから解放され、<br>自分らしく毎日を謳歌できるように。</p>
+          <p class="map-verse__key">人生を、咲かす。</p>
+          <p>そのための拠り所として、<br>人に、地域に、まだない喜びを届けていきます。</p>
+        </div>
+        <ul class="loc-prefs">
+          <li><b>大阪府</b><span data-pref-count="大阪府">0</span><span><small>拠り所</small></span></li>
+          <li><b>兵庫県</b><span data-pref-count="兵庫県">0</span><span><small>拠り所</small></span></li>
+          <li><b>奈良県</b><span data-pref-count="奈良県">0</span><span><small>拠り所</small></span></li>
+        </ul>
+      </div>
+      <div class="loc">
+        <div class="map-card" data-req="現行サイト掲載施設を市町村単位でプロット（住所確定後に正確な座標へ）">
+          <div class="map-filter" role="group" aria-label="事業で絞り込む"></div>
+          <div class="map-holder"></div>
+          <div class="map-legend"><span><i style="background:var(--biz-gairai)"></i>外来・入院</span><span><i style="background:var(--biz-zaitaku)"></i>在宅医療</span><span><i style="background:var(--biz-biyou)"></i>美容医療</span><span><i style="background:var(--biz-kaigo)"></i>介護</span><span><i style="background:var(--biz-shogai)"></i>障がい福祉</span></div>
+          <p class="map-note">※概略図です。ピンの数字は拠り所の数、外側の色は事業を表します。施設の所在地は現行サイトの施設名・沿革から市町村単位で推定しています（要確認）。</p>
+        </div>
+        <div class="loc-side">
+          <div class="loc-panel" aria-live="polite"></div>
+          <div class="loc-areas"></div>
+          <p class="loc-outside"></p>
         </div>
       </div>
-      <div class="filters" role="group" aria-label="推移の表示条件">
-        <div class="segmented" id="trend-unit" role="radiogroup" aria-label="集計の単位">
-          <button type="button" role="radio" data-unit="day">日別</button>
-          <button type="button" role="radio" data-unit="week">週別</button>
-          <button type="button" role="radio" data-unit="month">月別</button>
+    </div>
+  </section>
+
+  <!-- 5 RECRUIT -->
+  <section class="section section--deep" id="recruit" style="overflow:hidden">
+    <div class="container">
+      <div class="rec-grid">
+        <div>
+          <span class="eyebrow">Recruit <small>採用情報</small></span>
+          <h2 class="rec-copy" style="margin-top:22px">あなたの専門性を、<br>待っている場所がある。</h2>
+          <p class="lead">5つの事業で働く医師・看護師・リハビリ職・介護職・支援員などを募集しています。関西各地の拠り所で、あなたらしい働き方を。</p>
+          <div style="display:grid;gap:10px;max-width:360px">
+            <a class="btn btn--white btn--arrow" href="recruit.html">採用情報TOPへ</a>
+            <a class="link-more" href="interview.html">スタッフインタビュー一覧へ</a>
+          </div>
         </div>
-        <label class="select">
-          <span>指標</span>
-          <select id="trend-metric"></select>
-        </label>
-        <p class="period-note" id="trend-note"></p>
-      </div>
-      <div class="notice" id="trend-warn" hidden></div>
-      <article class="card">
-        <header><div><h3>グラフ</h3><p class="sub" id="trend-chart-sub"></p></div></header>
-        <div class="chart h-340"><canvas id="c-trend" role="img" aria-label="指標の推移"></canvas></div>
-      </article>
-      <article class="card">
-        <header>
-          <div><h3>表</h3><p class="sub">新しい期間が上</p></div>
-          <div class="table-tools"><button class="btn small" type="button" id="trend-csv">CSV 出力</button></div>
-        </header>
-        <div class="table-wrap">
-          <table class="data-table" id="trend-table"><thead></thead><tbody></tbody></table>
+        <div class="marquee" data-req="インタビューを2列で上下逆方向に流す（ホバーで停止）">
+          <div class="marquee__col">
+            <a class="iv-card" href="interview.html"><img src="img/young-doctor.jpg" alt="" loading="lazy" style="object-position:55% 30%"><div><span class="no">Interview 01</span><b>地域の困りごとに、医師として向き合う。</b><span>在宅医療事業部｜医師</span></div></a>
+            <a class="iv-card" href="interview.html"><img src="img/nurses-three.jpg" alt="" loading="lazy" style="object-position:80% 30%"><div><span class="no">Interview 03</span><b>一人ひとりの「こうありたい」に。</b><span>美容事業部｜看護師</span></div></a>
+            <a class="iv-card" href="interview.html"><img src="img/station-team.jpg" alt="" loading="lazy"><div><span class="no">Interview 05</span><b>地域のかかりつけを、チームで守る。</b><span>外来・入院｜看護師</span></div></a>
+            <a class="iv-card" href="interview.html"><img src="img/young-doctor.jpg" alt="" loading="lazy" style="object-position:55% 30%"><div><span class="no">Interview 01</span><b>地域の困りごとに、医師として向き合う。</b><span>在宅医療事業部｜医師</span></div></a>
+            <a class="iv-card" href="interview.html"><img src="img/nurses-three.jpg" alt="" loading="lazy" style="object-position:80% 30%"><div><span class="no">Interview 03</span><b>一人ひとりの「こうありたい」に。</b><span>美容事業部｜看護師</span></div></a>
+            <a class="iv-card" href="interview.html"><img src="img/station-team.jpg" alt="" loading="lazy"><div><span class="no">Interview 05</span><b>地域のかかりつけを、チームで守る。</b><span>外来・入院｜看護師</span></div></a>
+          </div>
+          <div class="marquee__col marquee__col--down">
+            <a class="iv-card" href="interview.html"><img src="img/disability-walk.jpg" alt="" loading="lazy"><div><span class="no">Interview 02</span><b>子どもたちの成長に、毎日寄り添う。</b><span>障がい事業部｜児童指導員</span></div></a>
+            <a class="iv-card" href="interview.html"><img src="img/care-staff.jpg" alt="" loading="lazy" style="object-position:45% 30%"><div><span class="no">Interview 04</span><b>住み慣れた家での暮らしを支える。</b><span>介護事業部｜介護職</span></div></a>
+            <a class="iv-card" href="interview.html"><img src="img/rehab-pt.jpg" alt="" loading="lazy"><div><span class="no">Interview 06</span><b>「できた」を一緒に喜べる仕事。</b><span>外来・入院｜理学療法士</span></div></a>
+            <a class="iv-card" href="interview.html"><img src="img/disability-walk.jpg" alt="" loading="lazy"><div><span class="no">Interview 02</span><b>子どもたちの成長に、毎日寄り添う。</b><span>障がい事業部｜児童指導員</span></div></a>
+            <a class="iv-card" href="interview.html"><img src="img/care-staff.jpg" alt="" loading="lazy" style="object-position:45% 30%"><div><span class="no">Interview 04</span><b>住み慣れた家での暮らしを支える。</b><span>介護事業部｜介護職</span></div></a>
+            <a class="iv-card" href="interview.html"><img src="img/rehab-pt.jpg" alt="" loading="lazy"><div><span class="no">Interview 06</span><b>「できた」を一緒に喜べる仕事。</b><span>外来・入院｜理学療法士</span></div></a>
+          </div>
         </div>
-      </article>
-    </div>
-  </main>
+      </div>
 
-  <footer class="foot">
-    データとアクセストークンはこのブラウザ内（localStorage）にのみ保存され、Instagram Graph API 以外へは送信されません。
-    <span class="build">版: <span id="build-stamp">2026/11/06 11:04</span></span>
-  </footer>
-
-  <!-- データ接続ダイアログ -->
-  <dialog id="data-dialog" aria-labelledby="dlg-title">
-    <form method="dialog" class="dlg-close"><button class="btn ghost icon" aria-label="閉じる">✕</button></form>
-    <h2 id="dlg-title">データ接続</h2>
-    <div class="tabs" role="tablist">
-      <button role="tab" type="button" data-tab="api" aria-selected="true">Instagram API 連携</button>
-      <button role="tab" type="button" data-tab="csv">CSV 取り込み</button>
-      <button role="tab" type="button" data-tab="demo">デモ・管理</button>
-    </div>
-
-    <div class="tab-panel" data-panel="api">
-      <p class="help">
-        Instagram の<strong>プロアカウント（ビジネス／クリエイター）</strong>と、Meta for Developers で発行したアクセストークンが必要です。
-        詳しい手順は README.md を参照してください。
-      </p>
-      <form id="api-form" class="form">
-        <label>ログイン方式
-          <select name="host">
-            <option value="instagram">Instagram ログイン（graph.instagram.com）</option>
-            <option value="facebook">Facebook ログイン（graph.facebook.com）</option>
-          </select>
-        </label>
-        <label>アクセストークン
-          <input name="token" type="password" autocomplete="off" required placeholder="IGAA… / EAA…" />
-        </label>
-        <div class="row">
-          <label>Instagram ユーザーID
-            <input name="userId" placeholder="me" />
-          </label>
-          <button class="btn small" type="button" id="find-ig">ID を検出</button>
+      <div class="rec-links">
+        <a class="rec-link" href="recruit.html#system"><img src="img/team-laptop.jpg" alt="" loading="lazy"><div><b>成長できる環境</b><span>研修・キャリア・評価制度</span></div></a>
+        <a class="rec-link" href="recruit.html#system"><img src="img/young-staff.jpg" alt="" loading="lazy"><div><b>選べる働き方</b><span>常勤・非常勤・スポット</span></div></a>
+        <div class="doctor-entry" data-req="医師登録：まずはLINE/Googleフォーム等で簡易導入">
+          <div><small>医師の方へ</small><p>常勤・非常勤・スポット・代診のご登録はこちら</p></div>
+          <a class="btn btn--primary btn--arrow" href="#">登録する</a>
         </div>
-        <p class="help small">Instagram ログインは「me」のままで OK。Facebook ログインの場合は「ID を検出」でビジネスアカウントIDを取得します。</p>
-        <div class="row">
-          <label>取得する投稿数
-            <input name="postLimit" type="number" min="5" max="500" value="50" />
-          </label>
-          <label>API バージョン
-            <input name="version" value="v23.0" />
-          </label>
-        </div>
-        <label class="check"><input type="checkbox" name="remember" /> トークンをこのブラウザに保存する</label>
-        <p class="status" id="api-status" role="status" aria-live="polite"></p>
-        <button class="btn primary" type="submit">取得して分析</button>
-      </form>
+      </div>
+      <p class="rec-sub"><a href="recruit.html#work">部門・職種紹介</a><a href="recruit.html#faq">採用Q&amp;A</a></p>
     </div>
+  </section>
 
-    <div class="tab-panel" data-panel="csv" hidden>
-      <p class="help">
-        Meta Business Suite の「インサイト → エクスポート」で出力した CSV をそのまま読み込めます。
-        <strong>投稿データ</strong>（Post ID・Publish time・Likes…）、
-        <strong>指標ごとの日次ファイル</strong>（Reach.csv・Views.csv・Visits.csv・Link clicks.csv・Interactions.csv・Follows.csv）、
-        <strong>オーディエンス</strong>（Audience.csv：フォロワー総数・年齢×性別・都市・国）を自動判別します。
-        ダウンロードしたファイルを<strong>まとめて選択</strong>してください。自作の CSV（日付・フォロワー数…）も読み込めます。
-      </p>
-      <p class="help small">
-        ※ 日次ファイルは表題かファイル名で指標を見分けます。<strong>ファイル名は変更せずに</strong>読み込んでください。
-        文字コードは UTF-16 / UTF-8 / Shift_JIS に対応しています。
-      </p>
-      <p class="help">
-        <strong>GA4 の流入データ</strong>（Excel .xlsx または CSV）も同じ場所から読み込めます。
-        「日付・参照元/メディア・セッション」の列がある表を自動で見つけ、Instagram からの流入だけを抜き出して投稿データと突き合わせます。
-        <code>予約タップ</code>・<code>CV</code> の列があれば、そこまでの通過率も出します。
-      </p>
-      <label class="drop" id="drop">
-        <input type="file" id="csv-input" accept=".csv,.tsv,.txt,.xlsx,.xls,.zip,text/csv" multiple />
-        <span>CSV / Excel / Search Console の ZIP をドロップ、またはクリックして選択</span>
-      </label>
-      <p class="help">
-        <strong>Google Search Console</strong>（検索パフォーマンス → エクスポート）の <strong>ZIP をそのまま</strong>読み込めます。
-        Instagram のプロパティを登録していれば、投稿 URL で突き合わせて投稿一覧に「検索表示・検索クリック・検索順位」が並びます。
-        <strong>ZIP のまま</strong>読み込んでください。中の CSV はどのプロパティも同じファイル名なので、展開すると区別できなくなります。
-      </p>
-      <p class="help">
-        <strong>毎日取り込むと、投稿ごとの推移が残ります。</strong>
-        取り込んだ時点のいいね・保存などを投稿ごとに記録するので、
-        投稿一覧の<strong>「詳細を見る」</strong>から「投稿してから何日目にどれだけ伸びたか」を数とグラフで確認できます。
-        ソーシャルインサイトの書き出しは、ファイル名の期間末をその時点として扱います。
-      </p>
-      <label class="check"><input type="checkbox" id="csv-merge" checked /> 現在のデータに追加（同じ投稿ID・日付は上書き）</label>
-      <p class="status" id="csv-status" role="status" aria-live="polite"></p>
-      <p class="help small">サンプル: <a href="samples/posts_sample.csv" download>posts_sample.csv</a> ・ <a href="samples/daily_sample.csv" download>daily_sample.csv</a></p>
+  <!-- 6 NEWS -->
+  <section class="section" id="news">
+    <div class="container news-wrap">
+      <div class="sec-head"><span class="eyebrow">News <small>お知らせ</small></span><h2 class="h-sec" style="margin-top:20px">お知らせ</h2><a class="link-more" href="#">一覧へ</a></div>
+      <ul class="news-list">
+        <li><a href="#"><span class="meta"><time>2026.06.01</time><span class="tag">開設</span></span><p>カラダキッズてんり を開設しました</p></a></li>
+        <li><a href="#"><span class="meta"><time>2026.04.01</time><span class="tag">開設</span></span><p>エミフル訪問看護ステーション てんり を開設しました</p></a></li>
+        <li><a href="#"><span class="meta"><time>2026.03.01</time><span class="tag">開設</span></span><p>障がい者グループホーム Hinodeシェアホーム加古川 を開設しました</p></a></li>
+        <li><a href="#"><span class="meta"><time>2026.03.01</time><span class="tag">開設</span></span><p>相談支援NOAH を開設しました</p></a></li>
+      </ul>
+      <p class="sample-note" style="grid-column:1/-1">※沿革をもとにしたサンプル。日付は月初で仮置き。</p>
     </div>
+  </section>
 
-    <div class="tab-panel" data-panel="demo" hidden>
-      <p class="help">架空アカウントの180日分のデータで全機能を試せます。</p>
-      <div class="row">
-        <button class="btn primary" type="button" id="load-demo">デモデータを読み込む</button>
-      </div>
-      <hr />
-      <p class="help">
-        <strong>どの端末からでも同じデータで開く</strong>には、下の「データをバックアップ（JSON）」で書き出したファイルを
-        <code>data.json</code> という名前にして、<code>index.html</code> と同じ場所にアップロードしてください。
-        次からは、このブラウザにデータが無いときに自動で読み込みます。
-      </p>
-      <div class="row">
-        <button class="btn" type="button" id="load-shared">サーバーの共有データを読み込む</button>
-      </div>
-      <div class="row">
-        <button class="btn" type="button" id="export-json">データをバックアップ（JSON）</button>
-        <label class="btn">バックアップから復元<input type="file" id="import-json" accept=".json,application/json" hidden /></label>
-      </div>
-      <div class="row">
-        <button class="btn danger" type="button" id="clear-data">保存データとトークンを削除</button>
+  <!-- 7 CONTACT -->
+  <section class="section contact" id="contact">
+    <div class="contact__bg"><img src="img/outpatient.jpg" alt="" loading="lazy"></div>
+    <div class="container center">
+      <span class="eyebrow">Contact <small>お問い合わせ</small></span>
+      <h2 class="h-sec" style="margin-top:20px">お問い合わせ</h2>
+      <p style="margin:0;opacity:.9">事業・連携・取材などのご相談はこちらから</p>
+      <div class="contact-grid" style="max-width:820px;margin-left:auto;margin-right:auto">
+        <a class="contact-box contact-box--form" href="contact.html">お問い合わせフォーム</a>
+        <a class="contact-box contact-box--tel" href="tel:0000000000"><b>TEL 00-0000-0000</b><span>受付時間 0:00〜0:00（要確認）</span></a>
       </div>
     </div>
-  </dialog>
+  </section>
+</main>
 
-  <!-- 投稿ごとの推移（投稿一覧の「詳細」から開く） -->
-  <dialog id="post-dialog" class="dlg-wide" aria-labelledby="post-dlg-title">
-    <form method="dialog" class="dlg-close"><button class="btn ghost icon" aria-label="閉じる">✕</button></form>
-    <h2 id="post-dlg-title">投稿後の伸び</h2>
-    <div class="post-dlg-head" id="post-dlg-head"></div>
-    <dl class="stat-list post-dlg-totals" id="post-dlg-totals"></dl>
-    <div class="post-dlg-tools">
-      <div class="segmented" id="post-dlg-mode" role="radiogroup" aria-label="表示する値">
-        <button type="button" role="radio" data-mode="total">累計</button>
-        <button type="button" role="radio" data-mode="delta">前回からの増加</button>
-      </div>
-      <div class="metric-picks" id="post-dlg-metrics" role="group" aria-label="表示する指標"></div>
-      <button class="btn small" type="button" id="post-dlg-csv">CSV 出力</button>
-    </div>
-    <p class="status" id="post-dlg-note" role="status" aria-live="polite"></p>
-    <div class="chart h-260"><canvas id="c-post-history" role="img" aria-label="投稿後のいいね・保存などの推移"></canvas></div>
-    <div class="table-wrap post-dlg-table">
-      <table class="data-table" id="post-history-table">
-        <thead></thead>
-        <tbody></tbody>
-      </table>
-    </div>
-  </dialog>
-
-  <div class="tooltip" id="tooltip" role="tooltip" hidden></div>
-  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+<div id="site-footer"></div>
+<script src="assets/main.js"></script>
 </body>
 </html>
