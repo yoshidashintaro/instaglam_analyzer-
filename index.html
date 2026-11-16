@@ -1,0 +1,17 @@
+<!doctype html>
+<!-- GitHub Pages でリポジトリの一番上を開いたときに、アプリ（public/index.html）へ転送する -->
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Instagram インサイト分析</title>
+  <meta http-equiv="refresh" content="0; url=public/index.html" />
+  <script>
+    // ?demo などのクエリと # 以降も引き継ぐ
+    location.replace('public/index.html' + location.search + location.hash);
+  </script>
+</head>
+<body>
+  <p><a href="public/index.html">Instagram インサイト分析を開く</a></p>
+</body>
+</html>
